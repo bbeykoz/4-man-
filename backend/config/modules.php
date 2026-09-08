@@ -1,0 +1,70 @@
+<?php
+
+return [
+    'list' => [
+        'accounting' => [
+            'name'        => 'Muhasebe',
+            'slug'        => 'accounting',
+            'description' => 'Fatura, gider ve mali kayıt yönetimi',
+            'icon'        => 'calculator',
+            'color'       => 'blue',
+            'permissions' => ['view', 'create', 'edit', 'delete', 'export', 'approve'],
+        ],
+        'marketing' => [
+            'name'        => 'Marketing',
+            'slug'        => 'marketing',
+            'description' => 'Kampanya ve müşteri adayı yönetimi',
+            'icon'        => 'megaphone',
+            'color'       => 'pink',
+            'permissions' => ['view', 'create', 'edit', 'delete', 'export'],
+        ],
+        'warehouse' => [
+            'name'        => 'Depo Müdürü',
+            'slug'        => 'warehouse',
+            'description' => 'Stok ve depo transfer yönetimi',
+            'icon'        => 'warehouse',
+            'color'       => 'amber',
+            'permissions' => ['view', 'create', 'edit', 'delete', 'export', 'approve'],
+        ],
+        'warehouse_control' => [
+            'name'        => 'Depo Kontrolcüsü',
+            'slug'        => 'warehouse_control',
+            'description' => 'Depo denetim ve sayım işlemleri',
+            'icon'        => 'clipboard-check',
+            'color'       => 'orange',
+            'permissions' => ['view', 'create', 'edit', 'export'],
+        ],
+        'packaging' => [
+            'name'        => 'Paketleme',
+            'slug'        => 'packaging',
+            'description' => 'Sipariş paketleme ve hazırlık süreçleri',
+            'icon'        => 'package',
+            'color'       => 'teal',
+            'permissions' => ['view', 'create', 'edit', 'delete', 'export'],
+        ],
+        'returns' => [
+            'name'        => 'İade Bölümü',
+            'slug'        => 'returns',
+            'description' => 'İade talep ve süreç yönetimi',
+            'icon'        => 'rotate-ccw',
+            'color'       => 'red',
+            'permissions' => ['view', 'create', 'edit', 'delete', 'approve', 'export'],
+        ],
+        'customs' => [
+            'name'        => 'Gümrükleme',
+            'slug'        => 'customs',
+            'description' => 'Gümrük beyan ve belge yönetimi',
+            'icon'        => 'globe',
+            'color'       => 'indigo',
+            'permissions' => ['view', 'create', 'edit', 'delete', 'export', 'approve'],
+        ],
+        'shipping' => [
+            'name'        => 'Nakliye',
+            'slug'        => 'shipping',
+            'description' => 'Sevkiyat ve rota yönetimi',
+            'icon'        => 'truck',
+            'color'       => 'green',
+            'permissions' => ['view', 'create', 'edit', 'delete', 'export', 'approve'],
+        ],
+    ],
+];

@@ -1,0 +1,31 @@
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# PHP / Laravel
+backend/vendor/
+backend/node_modules/
+backend/storage/logs/*
+backend/storage/framework/cache/*
+backend/storage/framework/sessions/*
+backend/storage/framework/testing/*
+backend/storage/framework/views/*
+backend/public/storage
+backend/public/build
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/coverage/
+frontend/.env*
+!frontend/.env.example
+frontend/*.tsbuildinfo
+
+# Editor and OS files
+.vscode/
+.idea/
+*.log
