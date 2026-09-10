@@ -109,6 +109,20 @@ export interface WarehouseRecord extends BaseRecord {
   transaction_date?: string
   operator_id?: string
   operator?: import('./auth.types').User
+  // Kalite kontrol — null: QC öncesi eski kayıt
+  qc_status?: 'pending' | 'passed' | null
+  qc_has_photo?: boolean
+  qc_checked_at?: string | null
+  qc_checked_by_name?: string | null
+  // Stok defteri
+  warehouse_id?: string | null
+  warehouse_name?: string | null
+  to_warehouse_id?: string | null
+  to_warehouse_name?: string | null
+  direction?: 'increase' | 'decrease' | null
+  system_quantity?: number | null
+  posted_at?: string | null
+  reversed_at?: string | null
 }
 
 export interface WarehouseProduct {

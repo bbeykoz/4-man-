@@ -15,25 +15,25 @@ class CompanyModuleController extends Controller
     {
         $company = Auth::user()->company;
 
-        $modules = Module::where('is_active', true)
-            ->with(['companyModule' => fn($q) => $q->where('company_id', $company->id)])
-            ->orderBy('name')
-            ->get();
+        // Pasif departmanlar da listelenir; şirket onları açamaz
+        $modules = Module::orderBy('name')->get();
+        $pivots  = $company->modules()->get()->keyBy('id');
 
         return response()->json([
             'success' => true,
-            'data'    => $modules->map(function ($module) use ($company) {
-                $pivot = $module->companyModule;
+            'data'    => $modules->map(function ($module) use ($company, $pivots) {
+                $pivot = $pivots->get($module->id)?->pivot;
                 return [
-                    'id'           => $module->id,
-                    'name'         => $module->name,
-                    'slug'         => $module->slug,
-                    'description'  => $module->description,
-                    'icon'         => $module->icon,
-                    'color'        => $module->color,
-                    'is_active'    => $pivot?->is_active ?? false,
-                    'records_count'=> $this->getCompanyModuleCount($module->slug, $company->id),
-                    'activated_at' => $pivot?->created_at,
+                    'id'            => $module->id,
+                    'name'          => $module->name,
+                    'slug'          => $module->slug,
+                    'description'   => $module->description,
+                    'icon'          => $module->icon,
+                    'color'         => $module->color,
+                    'is_active'     => $module->is_active && (bool) ($pivot?->is_active ?? false),
+                    'system_active' => $module->is_active,
+                    'records_count' => $this->getCompanyModuleCount($module->slug, $company->id),
+                    'activated_at'  => $pivot?->activated_at,
                 ];
             }),
         ]);
@@ -46,11 +46,19 @@ class CompanyModuleController extends Controller
 
         $validated = $request->validate(['is_active' => 'required|boolean']);
 
+        if ($validated['is_active'] && !$module->is_active) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bu departman sistem yöneticisi tarafından pasife alınmıştır.',
+                'code'    => 'MODULE_PASSIVE',
+            ], 422);
+        }
+
         $company->modules()->syncWithoutDetaching([$module->id => [
             'is_active' => $validated['is_active'],
         ]]);
 
-        Cache::forget("company_{$company->id}_module_{$module->slug}");
+        Cache::forget("company_module_{$company->id}_{$module->slug}");
 
         $status = $validated['is_active'] ? 'aktifleştirildi' : 'devre dışı bırakıldı';
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Module;
+use App\Services\ActivityLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -11,6 +12,8 @@ use Illuminate\Support\Str;
 
 class ModuleController extends Controller
 {
+    public function __construct(private readonly ActivityLogService $activityLogService) {}
+
     public function index(): JsonResponse
     {
         $modules = Module::withCount(['companies as companies_count' => function ($q) {
@@ -77,11 +80,27 @@ class ModuleController extends Controller
             'description' => 'sometimes|string',
         ]);
 
+        $wasActive = $module->is_active;
+
         $module->update($validated);
 
-        Cache::tags(['modules'])->flush();
+        Module::forgetActiveCache($module->slug);
 
-        return response()->json(['success' => true, 'message' => 'Modül güncellendi.']);
+        if (array_key_exists('is_active', $validated) && $wasActive !== $module->is_active) {
+            $this->activityLogService->log(
+                $module->is_active ? 'module.activated' : 'module.deactivated',
+                $module,
+                $request->user(),
+                ['is_active' => $wasActive],
+                ['is_active' => $module->is_active],
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Modül güncellendi.',
+            'data'    => $module->only(['id', 'name', 'slug', 'description', 'is_active']),
+        ]);
     }
 
     private function getModuleRecordCount(string $slug): int

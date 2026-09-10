@@ -12,7 +12,8 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
 import { useUiStore } from '@/store/ui.store'
 import { useAuth } from '@/hooks/useAuth'
-import { ROLE_LEVELS } from '@/lib/constants'
+import { useModuleStatus } from '@/hooks/useModuleStatus'
+import { ROLE_LEVELS, getModuleSlugForPath } from '@/lib/constants'
 import { useT } from '@/lib/i18n'
 import { useQuery } from '@tanstack/react-query'
 import { get } from '@/lib/api'
@@ -118,6 +119,20 @@ export function Sidebar() {
 
   const navGroups   = getSidebarNav(roleLevel, t, unreadMessages)
   const fullAccess  = isCompanyOwner()
+  const superAdmin  = roleLevel === ROLE_LEVELS.SUPER_ADMIN
+  const { isPassive } = useModuleStatus()
+
+  // Pasif departman: şirket kullanıcıları için tıklanamaz, süper admin için sadece etiketli
+  const passiveState = (href: string) => {
+    const passive = isPassive(getModuleSlugForPath(href))
+    return { passive, blocked: passive && !superAdmin }
+  }
+
+  const passiveBadge = (
+    <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500">
+      Pasif
+    </span>
+  )
 
   const sidebarContent = (
     <aside
@@ -165,6 +180,25 @@ export function Sidebar() {
                 {visibleItems.map((item) => {
                   const Icon     = iconMap[item.icon] ?? LayoutDashboard
                   const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                  const { passive, blocked } = passiveState(item.href)
+
+                  if (blocked) {
+                    return (
+                      <div
+                        key={item.href}
+                        title={`${item.label} — departman pasif`}
+                        aria-disabled="true"
+                        className={cn(
+                          'flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-not-allowed text-zinc-400 dark:text-zinc-600',
+                          sidebarCollapsed && 'justify-center px-2'
+                        )}
+                      >
+                        <Icon className="h-4 w-4 flex-shrink-0" />
+                        {!sidebarCollapsed && <span className="truncate flex-1 line-through">{item.label}</span>}
+                        {!sidebarCollapsed && passiveBadge}
+                      </div>
+                    )
+                  }
 
                   return (
                     <Link
@@ -176,6 +210,7 @@ export function Sidebar() {
                         isActive
                           ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400 font-medium'
                           : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-100',
+                        passive && !isActive && 'opacity-60',
                         sidebarCollapsed && 'justify-center px-2'
                       )}
                     >
@@ -188,6 +223,7 @@ export function Sidebar() {
                         )}
                       </span>
                       {!sidebarCollapsed && <span className="truncate flex-1">{item.label}</span>}
+                      {!sidebarCollapsed && passive && passiveBadge}
                       {!sidebarCollapsed && !!item.badge && (
                         <span className="ml-auto min-w-[20px] h-5 px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
                           {item.badge > 99 ? '99+' : item.badge}
@@ -287,6 +323,21 @@ export function Sidebar() {
                   {visibleItems.map((item) => {
                     const Icon     = iconMap[item.icon] ?? LayoutDashboard
                     const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                    const { passive, blocked } = passiveState(item.href)
+
+                    if (blocked) {
+                      return (
+                        <div
+                          key={item.href}
+                          aria-disabled="true"
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm cursor-not-allowed text-zinc-400 dark:text-zinc-600"
+                        >
+                          <Icon className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate flex-1 line-through">{item.label}</span>
+                          {passiveBadge}
+                        </div>
+                      )
+                    }
 
                     return (
                       <Link
@@ -297,11 +348,13 @@ export function Sidebar() {
                           'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all',
                           isActive
                             ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400 font-medium'
-                            : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+                            : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50',
+                          passive && !isActive && 'opacity-60'
                         )}
                       >
                         <Icon className={cn('h-4 w-4 flex-shrink-0', isActive && 'text-blue-600 dark:text-blue-400')} />
                         <span className="truncate flex-1">{item.label}</span>
+                        {passive && passiveBadge}
                         {!!item.badge && (
                           <span className="ml-auto min-w-[20px] h-5 px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">
                             {item.badge > 99 ? '99+' : item.badge}

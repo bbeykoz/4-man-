@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CompanyResource;
+use App\Http\Resources\DepartmentResource;
 use App\Models\Department;
 use App\Models\Role;
 use App\Repositories\CompanyRepository;
@@ -119,13 +120,13 @@ class CompanyController extends Controller
         $this->companyRepository->findOrFail($id);
 
         $departments = Department::where('company_id', $id)
-            ->orderBy('order_index')
-            ->orderBy('name')
-            ->get(['id', 'name', 'color', 'status']);
+            ->withCount('users')
+            ->ordered()
+            ->get();
 
         return response()->json([
             'success' => true,
-            'data'    => $departments,
+            'data'    => DepartmentResource::collection($departments),
         ]);
     }
 

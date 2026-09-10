@@ -54,6 +54,7 @@ export interface Department {
   description?: string
   color: string
   status: 'active' | 'inactive'
+  system_active?: boolean  // false: süper admin sistem genelinde pasife aldı
   order_index: number
   company_id: string
   manager_id?: string

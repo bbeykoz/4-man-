@@ -31,6 +31,8 @@ class RecordResource extends JsonResource
 
             // Module-specific fields (merges all present)
             ...$this->getModuleFields(),
+            ...$this->getQualityCheckFields(),
+            ...$this->getStockLedgerFields(),
 
             // Relations
             'created_by'    => $this->whenLoaded('createdBy', fn() => new UserResource($this->createdBy)),
@@ -51,6 +53,41 @@ class RecordResource extends JsonResource
             'department'    => $this->whenLoaded('department', fn() => new DepartmentResource($this->department)),
             'comments_count'    => $this->whenCounted('comments'),
             'attachments_count' => $this->whenCounted('attachments'),
+        ];
+    }
+
+    /** Depo kayıtlarının kalite kontrol bilgisi (dosya yolu dışarı verilmez). */
+    private function getQualityCheckFields(): array
+    {
+        if (!array_key_exists('qc_status', $this->resource->getAttributes())) {
+            return [];
+        }
+
+        return [
+            'qc_status'          => $this->qc_status,
+            'qc_has_photo'       => !empty($this->qc_photo_path),
+            'qc_checked_at'      => $this->qc_checked_at?->toISOString(),
+            'qc_checked_by_name' => $this->relationLoaded('qcCheckedBy') ? $this->qcCheckedBy?->name : null,
+        ];
+    }
+
+    /** Depo kayıtlarının stok defteri bilgisi (depo, yön, işlenme durumu). */
+    private function getStockLedgerFields(): array
+    {
+        if (!array_key_exists('posted_at', $this->resource->getAttributes())) {
+            return [];
+        }
+
+        return [
+            'warehouse_id'      => $this->warehouse_id,
+            'warehouse_name'    => $this->relationLoaded('warehouse') ? $this->warehouse?->name : null,
+            'to_warehouse_id'   => $this->to_warehouse_id,
+            'to_warehouse_name' => $this->relationLoaded('toWarehouse') ? $this->toWarehouse?->name : null,
+            'direction'         => $this->direction,
+            'system_quantity'   => $this->system_quantity,
+            'posted_at'         => $this->posted_at?->toISOString(),
+            'reversed_at'       => $this->reversed_at?->toISOString(),
+            'product_id'        => $this->product_id,
         ];
     }
 

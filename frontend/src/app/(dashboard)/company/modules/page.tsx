@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { get, patch } from '@/lib/api'
 import {
   Calculator, Megaphone, Package, PackageCheck, PackageOpen,
-  RotateCcw, Truck, FileCheck, ToggleLeft, ToggleRight
+  RotateCcw, Truck, FileCheck, ToggleLeft, ToggleRight, Lock
 } from 'lucide-react'
 
 const MODULE_ICONS: Record<string, any> = {
@@ -37,6 +37,7 @@ interface CompanyModule {
   slug: string
   description: string
   is_active: boolean
+  system_active: boolean
   records_count: number
   activated_at: string | null
 }
@@ -96,10 +97,13 @@ export default function CompanyModulesPage() {
                     </div>
                     <button
                       onClick={() => toggleMutation.mutate({ id: mod.id, active: !mod.is_active })}
-                      disabled={toggleMutation.isPending}
-                      className="transition-colors"
+                      disabled={toggleMutation.isPending || !mod.system_active}
+                      className="transition-colors disabled:cursor-not-allowed"
+                      title={mod.system_active ? undefined : 'Sistem yöneticisi tarafından pasife alındı'}
                     >
-                      {mod.is_active ? (
+                      {!mod.system_active ? (
+                        <Lock className="h-5 w-5 text-zinc-400" />
+                      ) : mod.is_active ? (
                         <ToggleRight className="h-7 w-7 text-blue-500" />
                       ) : (
                         <ToggleLeft className="h-7 w-7 text-zinc-400" />
@@ -114,7 +118,7 @@ export default function CompanyModulesPage() {
                         ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                         : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500'
                     }`}>
-                      {mod.is_active ? 'Aktif' : 'Pasif'}
+                      {!mod.system_active ? 'Sistem tarafından pasif' : mod.is_active ? 'Aktif' : 'Pasif'}
                     </span>
                     <span className="text-xs text-zinc-400">{mod.records_count} kayıt</span>
                   </div>

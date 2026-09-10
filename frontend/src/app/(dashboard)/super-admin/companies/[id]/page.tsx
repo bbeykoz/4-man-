@@ -119,7 +119,16 @@ export default function CompanyDetailPage() {
     }),
     deptCol.accessor('status', {
       header: 'Durum',
-      cell: (info) => <StatusBadge status={info.getValue()} />,
+      cell: (info) => info.row.original.system_active === false ? (
+        <span
+          title="Süper admin tarafından sistem genelinde pasife alındı"
+          className="text-xs font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500"
+        >
+          Sistem tarafından pasif
+        </span>
+      ) : (
+        <StatusBadge status={info.getValue()} />
+      ),
     }),
   ]
 

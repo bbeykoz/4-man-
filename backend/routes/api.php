@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\Auth\TwoFactorController;
 use App\Http\Controllers\Api\V1\Company\DepartmentController;
 use App\Http\Controllers\Api\V1\Company\RoleController;
 use App\Http\Controllers\Api\V1\Company\UserController;
+use App\Http\Controllers\Api\V1\CopilotController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\Modules\AccountingController;
 use App\Http\Controllers\Api\V1\Modules\CustomsController;
@@ -12,6 +13,10 @@ use App\Http\Controllers\Api\V1\Modules\MarketingController;
 use App\Http\Controllers\Api\V1\Modules\PackagingController;
 use App\Http\Controllers\Api\V1\Modules\ReturnController;
 use App\Http\Controllers\Api\V1\Modules\ShippingController;
+use App\Http\Controllers\Api\V1\Modules\PurchaseOrderController;
+use App\Http\Controllers\Api\V1\Modules\StockAnomalyController;
+use App\Http\Controllers\Api\V1\Modules\StockController;
+use App\Http\Controllers\Api\V1\Modules\SupplierController;
 use App\Http\Controllers\Api\V1\Modules\WarehouseController;
 use App\Http\Controllers\Api\V1\Modules\WarehouseProductController;
 use App\Http\Controllers\Api\V1\NotificationController;
@@ -27,6 +32,7 @@ use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\TicketController;
 use App\Http\Controllers\Api\V1\SuperAdmin\TicketAdminController;
 use App\Http\Controllers\Api\V1\MeetingController;
+use App\Http\Controllers\Api\V1\ModuleStatusController;
 use Illuminate\Support\Facades\Route;
 
 // ──────────────────────────────────────────────────────────────────
@@ -112,6 +118,15 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
         Route::delete('{id}',  [MeetingController::class, 'destroy']);
     });
 
+    // ── AI Copilot (altyapı; sağlayıcı config/copilot.php) ─────
+    Route::prefix('copilot')->group(function () {
+        Route::get('status',                  [CopilotController::class, 'status']);
+        Route::get('conversations',           [CopilotController::class, 'conversations']);
+        Route::get('conversations/{id}',      [CopilotController::class, 'show']);
+        Route::delete('conversations/{id}',   [CopilotController::class, 'destroy']);
+        Route::post('messages',               [CopilotController::class, 'send'])->middleware('throttle:20,1');
+    });
+
     // ── Activity Logs ───────────────────────────────────────────
     Route::get('activity-logs', [ActivityLogController::class, 'index']);
 
@@ -194,6 +209,8 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
     };
 
     Route::prefix('modules')->group(function () use ($moduleRoutes) {
+        Route::get('status', ModuleStatusController::class);
+
         Route::prefix('accounting')->middleware('module.enabled:accounting')->group(function () use ($moduleRoutes) {
             $moduleRoutes(AccountingController::class);
             Route::post('import',            [AccountingController::class, 'import']);
@@ -203,17 +220,75 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
         Route::prefix('marketing')->middleware('module.enabled:marketing')
             ->group(fn() => $moduleRoutes(MarketingController::class));
 
-        Route::prefix('warehouse')->middleware('module.enabled:warehouse')->group(function () use ($moduleRoutes) {
+        // Kalite kontrol: sonradan onay + görsel (depo müdürü ve depo kontrolcüsü)
+        $qualityCheckRoutes = function () {
+            Route::post('{id}/quality-check',      [WarehouseController::class, 'qualityCheck']);
+            Route::get('{id}/quality-check/photo', [WarehouseController::class, 'qualityCheckPhoto']);
+        };
+
+        Route::prefix('warehouse')->middleware('module.enabled:warehouse')->group(function () use ($moduleRoutes, $qualityCheckRoutes) {
             $moduleRoutes(WarehouseController::class);
+            $qualityCheckRoutes();
             Route::post('import',           [WarehouseController::class, 'import']);
             Route::get('template/download', [WarehouseController::class, 'downloadTemplate']);
         });
 
-        Route::prefix('warehouse-control')->middleware('module.enabled:warehouse_control')
-            ->group(fn() => $moduleRoutes(WarehouseController::class));
+        Route::prefix('warehouse-control')->middleware('module.enabled:warehouse_control')->group(function () use ($moduleRoutes, $qualityCheckRoutes) {
+            $moduleRoutes(WarehouseController::class);
+            $qualityCheckRoutes();
+        });
+
+        // Stok defteri: depo tanımları ve bakiyeler (depo müdürü + depo kontrolcüsü)
+        Route::prefix('stock')->middleware('module.enabled:warehouse,warehouse_control')->group(function () {
+            Route::get('warehouses',         [StockController::class, 'warehouses']);
+            Route::post('warehouses',        [StockController::class, 'storeWarehouse']);
+            Route::put('warehouses/{id}',    [StockController::class, 'updateWarehouse']);
+            Route::delete('warehouses/{id}', [StockController::class, 'destroyWarehouse']);
+            Route::get('balances',           [StockController::class, 'balances']);
+            Route::get('products/{id}',      [StockController::class, 'product']);
+            Route::get('risk',               [StockController::class, 'risk']);
+            Route::get('risk/trend',         [StockController::class, 'riskTrend']);
+            Route::get('expiry',             [StockController::class, 'expiry']);
+            Route::post('expiry/actions',    [StockController::class, 'expiryAction']);
+            Route::get('dead-stock',         [StockController::class, 'deadStock']);
+            Route::post('dead-stock/reorder-block', [StockController::class, 'blockReorder']);
+            Route::get('transfers/suggestions',     [StockController::class, 'transferSuggestions']);
+            Route::post('transfers/orders',         [StockController::class, 'createTransfers']);
+            Route::get('anomalies',                 [StockAnomalyController::class, 'index']);
+            Route::post('anomalies/scan',           [StockAnomalyController::class, 'scan']);
+            Route::patch('anomalies/{id}',          [StockAnomalyController::class, 'review']);
+            Route::post('what-if',                  [StockController::class, 'whatIf']);
+            Route::get('what-if/options',           [StockController::class, 'whatIfOptions']);
+            Route::get('kpis',                      [StockController::class, 'kpis']);
+            Route::get('abc-xyz',                   [StockController::class, 'abcXyz']);
+            Route::post('abc-xyz/apply-safety',     [StockController::class, 'applySafetyStock']);
+            Route::get('reports/overview',          [StockController::class, 'reportOverview']);
+            Route::get('reports/export',            [StockController::class, 'reportExport']);
+        });
+
+        // Satın alma: tedarikçiler, siparişler, otomatik öneriler
+        Route::prefix('purchasing')->middleware('module.enabled:warehouse,warehouse_control')->group(function () {
+            Route::get('suppliers',            [SupplierController::class, 'index']);
+            Route::post('suppliers',           [SupplierController::class, 'store']);
+            Route::put('suppliers/{id}',       [SupplierController::class, 'update']);
+            Route::delete('suppliers/{id}',    [SupplierController::class, 'destroy']);
+            Route::get('performance',          [SupplierController::class, 'performance']);
+            Route::post('suppliers/{id}/apply-lead-time', [SupplierController::class, 'applyActualLeadTime']);
+
+            Route::get('suggestions',          [PurchaseOrderController::class, 'suggestions']);
+            Route::post('suggestions/orders',  [PurchaseOrderController::class, 'fromSuggestions']);
+
+            Route::get('orders',               [PurchaseOrderController::class, 'index']);
+            Route::post('orders',              [PurchaseOrderController::class, 'store']);
+            Route::get('orders/{id}',          [PurchaseOrderController::class, 'show']);
+            Route::put('orders/{id}',          [PurchaseOrderController::class, 'update']);
+            Route::post('orders/{id}/send',    [PurchaseOrderController::class, 'send']);
+            Route::post('orders/{id}/cancel',  [PurchaseOrderController::class, 'cancel']);
+            Route::post('orders/{id}/receive', [PurchaseOrderController::class, 'receive']);
+        });
 
         // Ürün kataloğu (warehouse veya warehouse-control aktif olanlara açık)
-        Route::prefix('warehouse-products')->group(function () {
+        Route::prefix('warehouse-products')->middleware('module.enabled:warehouse,warehouse_control')->group(function () {
             Route::get('search',     [WarehouseProductController::class, 'search']);
             Route::get('stats',      [WarehouseProductController::class, 'stats']);
             Route::get('/',          [WarehouseProductController::class, 'index']);

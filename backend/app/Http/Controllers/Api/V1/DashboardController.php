@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Module;
 use App\Services\DashboardService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -56,6 +57,14 @@ class DashboardController extends Controller
     public function module(Request $request, string $module): JsonResponse
     {
         $user = $request->user();
+
+        if (!$user->isSuperAdmin() && !Module::isSlugActive($module)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bu departman sistem yöneticisi tarafından pasife alınmıştır.',
+                'code'    => 'MODULE_PASSIVE',
+            ], 403);
+        }
 
         return response()->json([
             'success' => true,

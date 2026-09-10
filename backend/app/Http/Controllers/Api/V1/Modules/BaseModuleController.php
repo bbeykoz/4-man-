@@ -34,7 +34,7 @@ abstract class BaseModuleController extends Controller
             : null;
     }
 
-    private function can(\Illuminate\Contracts\Auth\Authenticatable $user, string $permission): bool
+    protected function can(\Illuminate\Contracts\Auth\Authenticatable $user, string $permission): bool
     {
         $staffPerm = $this->staffPerm(explode('.', $permission)[2] ?? '');
         return $user->hasPermission($permission)

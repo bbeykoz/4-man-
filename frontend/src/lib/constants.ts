@@ -9,6 +9,28 @@ export const MODULES = [
   { slug: 'shipping',          name: 'Nakliye',          icon: 'Truck',         color: 'green',  path: '/modules/shipping' },
 ] as const
 
+// Departman sayfası → sistem modül slug'ı (süper admin pasife alınca erişim kapanır)
+export const MODULE_ROUTE_SLUGS: Record<string, string> = {
+  '/modules/accounting-manager': 'accounting',
+  '/modules/accounting':         'accounting',
+  '/modules/marketing':          'marketing',
+  '/modules/warehouse':          'warehouse',
+  '/modules/warehouse-control':  'warehouse_control',
+  '/modules/packaging':          'packaging',
+  '/modules/returns-manager':    'returns',
+  '/modules/returns':            'returns',
+  '/modules/customs':            'customs',
+  '/modules/shipping-manager':   'shipping',
+  '/modules/shipping':           'shipping',
+}
+
+export function getModuleSlugForPath(pathname: string): string | null {
+  for (const [route, slug] of Object.entries(MODULE_ROUTE_SLUGS)) {
+    if (pathname === route || pathname.startsWith(route + '/')) return slug
+  }
+  return null
+}
+
 export const ROLE_LEVELS = {
   SUPER_ADMIN:        1,
   COMPANY_OWNER:      2,

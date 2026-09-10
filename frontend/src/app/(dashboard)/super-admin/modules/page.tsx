@@ -7,6 +7,7 @@ import { Pencil, ToggleLeft, ToggleRight, X, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/common/PageHeader'
 import { DataTable } from '@/components/common/DataTable'
+import { ConfirmModal } from '@/components/common/ConfirmModal'
 import { get, patch, post } from '@/lib/api'
 
 interface SystemModule {
@@ -28,6 +29,7 @@ const inputCls = 'w-full px-3 py-2 text-sm rounded-lg border border-zinc-200 dar
 export default function SuperAdminModulesPage() {
   const qc = useQueryClient()
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [confirmModule, setConfirmModule] = useState<SystemModule | null>(null)
   const [editModule, setEditModule] = useState<SystemModule | null>(null)
   const [editForm, setEditForm] = useState({ name: '', description: '' })
   const [createOpen, setCreateOpen] = useState(false)
@@ -44,6 +46,7 @@ export default function SuperAdminModulesPage() {
     onSuccess: (_, vars) => {
       toast.success(vars.active ? 'Departman aktifleştirildi.' : 'Departman pasifleştirildi.')
       qc.invalidateQueries({ queryKey: ['sa-modules'] })
+      qc.invalidateQueries({ queryKey: ['module-status'] })
     },
     onError: (e: any) => toast.error(e?.message ?? 'İşlem başarısız.'),
     onSettled: () => setTogglingId(null),
@@ -73,8 +76,22 @@ export default function SuperAdminModulesPage() {
   })
 
   function handleToggle(module: SystemModule) {
+    // Pasife alma tüm şirketleri etkiler; onay iste
+    if (module.is_active) {
+      setConfirmModule(module)
+      return
+    }
     setTogglingId(module.id)
-    toggleMutation.mutate({ id: module.id, active: !module.is_active })
+    toggleMutation.mutate({ id: module.id, active: true })
+  }
+
+  function confirmDeactivate() {
+    if (!confirmModule) return
+    setTogglingId(confirmModule.id)
+    toggleMutation.mutate(
+      { id: confirmModule.id, active: false },
+      { onSettled: () => setConfirmModule(null) },
+    )
   }
 
   function openEdit(module: SystemModule) {
@@ -116,18 +133,27 @@ export default function SuperAdminModulesPage() {
         const module = info.row.original
         const isPending = togglingId === module.id
         return (
-          <button
-            onClick={() => handleToggle(module)}
-            disabled={isPending}
-            className="transition-opacity disabled:opacity-50"
-            title={info.getValue() ? 'Pasifleştir' : 'Aktifleştir'}
-          >
-            {info.getValue() ? (
-              <ToggleRight className="h-7 w-7 text-blue-500" />
-            ) : (
-              <ToggleLeft className="h-7 w-7 text-zinc-400" />
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleToggle(module)}
+              disabled={isPending}
+              className="transition-opacity disabled:opacity-50"
+              title={info.getValue() ? 'Pasifleştir' : 'Aktifleştir'}
+            >
+              {info.getValue() ? (
+                <ToggleRight className="h-7 w-7 text-blue-500" />
+              ) : (
+                <ToggleLeft className="h-7 w-7 text-zinc-400" />
+              )}
+            </button>
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+              info.getValue()
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500'
+            }`}>
+              {info.getValue() ? 'Aktif' : 'Pasif'}
+            </span>
+          </div>
         )
       },
     }),
@@ -149,7 +175,7 @@ export default function SuperAdminModulesPage() {
     <div className="space-y-5">
       <PageHeader
         title="Departmanlar"
-        description="Sistemdeki tüm departmanları yönetin"
+        description="Sistemdeki tüm departmanları yönetin. Pasife alınan departman tüm şirketlerde erişime kapanır."
         breadcrumbs={[{ label: 'Süper Admin' }, { label: 'Departmanlar' }]}
         actions={
           <button
@@ -170,6 +196,17 @@ export default function SuperAdminModulesPage() {
         onPaginationChange={() => {}}
         isLoading={isLoading}
         emptyMessage="Departman bulunamadı."
+      />
+
+      <ConfirmModal
+        open={!!confirmModule}
+        onClose={() => setConfirmModule(null)}
+        onConfirm={confirmDeactivate}
+        title={`${confirmModule?.name ?? ''} pasife alınsın mı?`}
+        description="Bu departman tüm şirketlerde pasif görünür. Şirket kullanıcıları departman paneline ve verilerine erişemez. Tekrar aktifleştirene kadar şirketler bu departmanı açamaz."
+        confirmLabel="Pasife Al"
+        variant="warning"
+        loading={toggleMutation.isPending}
       />
 
       {/* Create Modal */}

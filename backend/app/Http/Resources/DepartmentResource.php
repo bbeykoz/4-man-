@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Module;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -17,6 +18,8 @@ class DepartmentResource extends JsonResource
             'description' => $this->description,
             'color'       => $this->color,
             'status'      => $this->status,
+            // type = modül slug'ı; süper admin pasife aldıysa false
+            'system_active' => $this->type ? Module::isSlugActive($this->type) : true,
             'order_index' => $this->order_index,
             'company_id'  => $this->company_id,
             'manager_id'  => $this->manager_id,

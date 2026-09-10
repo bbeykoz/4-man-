@@ -7,7 +7,7 @@ import {
   Package, ArrowDownCircle, ArrowUpCircle, ArrowLeftRight,
   SlidersHorizontal, ClipboardList, Layers,
   Clock, Ban, UserCircle, CheckCircle2,
-  Scan, ChevronDown, AlertTriangle, TrendingUp, BoxSelect, Loader2,
+  Scan, ChevronDown, AlertTriangle, TrendingUp, BoxSelect, Loader2, Boxes, Building2, ShieldAlert, ShoppingCart, CalendarClock, Shuffle, Siren, FlaskConical, Gauge, Grid3x3, LineChart as LineChartIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -22,6 +22,23 @@ import { PRIORITY_OPTIONS, ROLE_LEVELS } from '@/lib/constants'
 import { useAuthStore } from '@/store/auth.store'
 import type { WarehouseRecord, WarehouseProduct } from '@/types/api.types'
 import { createColumnHelper } from '@tanstack/react-table'
+import { QcBadge, QcDetailModal, QualityCheckPrompt, createRecordWithQualityCheck } from '@/components/warehouse/QualityCheck'
+import { WarehouseFields } from '@/components/warehouse/WarehouseFields'
+import { WarehousesModal } from '@/components/warehouse/WarehousesModal'
+import { StockOverview } from '@/components/warehouse/StockOverview'
+import { StockRiskPanel } from '@/components/warehouse/StockRiskPanel'
+import { PurchasingPanel } from '@/components/warehouse/purchasing/PurchasingPanel'
+import { RecordStockState } from '@/components/warehouse/RecordStockState'
+import { FefoHint } from '@/components/warehouse/FefoHint'
+import { ExpiryDeadStockPanel } from '@/components/warehouse/ExpiryDeadStockPanel'
+import { TransferPanel } from '@/components/warehouse/TransferPanel'
+import { AnomalyPanel } from '@/components/warehouse/AnomalyPanel'
+import { WhatIfPanel } from '@/components/warehouse/WhatIfPanel'
+import { KpiPanel } from '@/components/warehouse/KpiPanel'
+import { AbcXyzPanel } from '@/components/warehouse/AbcXyzPanel'
+import { ReportsPanel } from '@/components/warehouse/ReportsPanel'
+import { RECORD_TYPES, apiErrorMessage, useWarehouses, type DepartmentOption } from '@/components/warehouse/stock'
+import { DepartmentOptions } from '@/components/warehouse/DepartmentOptions'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -33,20 +50,23 @@ const labelCls = 'block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-
 
 const UNIT_OPTIONS = ['adet', 'kg', 'gram', 'litre', 'ml', 'kutu', 'palet', 'koli', 'çuval', 'ton', 'metre', 'cm']
 
-const TYPE_OPTIONS = [
-  { value: 'stock_in',    label: 'Stok Girişi',      color: 'green' },
-  { value: 'stock_out',   label: 'Stok Çıkışı',      color: 'red' },
-  { value: 'transfer',    label: 'Transfer',          color: 'blue' },
-  { value: 'adjustment',  label: 'Sayım Düzeltme',   color: 'yellow' },
-  { value: 'inspection',  label: 'Denetim',           color: 'purple' },
-  { value: 'stock_count', label: 'Stok Sayımı',       color: 'orange' },
-]
+const TYPE_OPTIONS = RECORD_TYPES
 
 const TABS = [
-  { id: 'depolama',  label: 'Depolama',              icon: Layers },
-  { id: 'stok',      label: 'Stok Kontrolü',          icon: SlidersHorizontal },
-  { id: 'yukleme',   label: 'Yükleme – Boşaltma',     icon: ArrowLeftRight },
-  { id: 'paketleme', label: 'Paketleme & Etiketleme', icon: Package },
+  { id: 'depolama',    label: 'Depolama',              icon: Layers },
+  { id: 'stok',        label: 'Stok Kontrolü',          icon: SlidersHorizontal },
+  { id: 'yukleme',     label: 'Yükleme – Boşaltma',     icon: ArrowLeftRight },
+  { id: 'stok-durumu', label: 'Stok Durumu',            icon: Boxes },
+  { id: 'stok-riski',  label: 'Stok Riski',             icon: ShieldAlert },
+  { id: 'satin-alma',  label: 'Satın Alma',             icon: ShoppingCart },
+  { id: 'skt-olu-stok', label: 'SKT & Ölü Stok',             icon: CalendarClock },
+  { id: 'depo-transfer', label: 'Depo Transferleri',             icon: Shuffle },
+  { id: 'anomaliler', label: 'Anomaliler',             icon: Siren },
+  { id: 'what-if', label: 'What-if Simülasyonu',             icon: FlaskConical },
+  { id: 'depo-kpi', label: 'Depo KPI',             icon: Gauge },
+  { id: 'abc-xyz', label: 'ABC / XYZ',             icon: Grid3x3 },
+  { id: 'raporlar', label: 'Raporlar',             icon: LineChartIcon },
+  { id: 'paketleme',   label: 'Paketleme & Etiketleme', icon: Package },
 ]
 
 function typeBadge(type: string) {
@@ -57,6 +77,8 @@ function typeBadge(type: string) {
     adjustment:  { label: 'Düzeltme',      cls: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' },
     inspection:  { label: 'Denetim',       cls: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400' },
     stock_count: { label: 'Stok Sayımı',   cls: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' },
+    damage:      { label: 'Hasar',         cls: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400' },
+    return_in:   { label: 'İade Girişi',   cls: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400' },
   }
   const entry = map[type] ?? { label: type, cls: 'bg-zinc-100 text-zinc-700' }
   return (
@@ -153,7 +175,7 @@ function ProductSearch({ onSelect, value, onChange }: ProductSearchProps) {
 interface WarehouseCreateModalProps {
   onClose: () => void
   defaultType?: string
-  departments: { id: string; name: string }[]
+  departments: DepartmentOption[]
   onSuccess: () => void
 }
 
@@ -174,6 +196,9 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
   const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0])
   const [departmentId, setDepartmentId] = useState('')
   const [description, setDescription] = useState('')
+  const [warehouseId, setWarehouseId] = useState('')
+  const [toWarehouseId, setToWarehouseId] = useState('')
+  const [direction, setDirection] = useState('')
 
   // Barkod okutma: input'a barkod gelince ürün ara
   const barcodeRef = useRef<HTMLInputElement>(null)
@@ -202,18 +227,29 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
     if (!title) setTitle(p.name)
   }
 
+  const [qcOpen, setQcOpen] = useState(false)
+
   const createMutation = useMutation({
-    mutationFn: (payload: Record<string, any>) => warehouseControlService.create(payload),
-    onSuccess: () => {
-      toast.success('Kayıt oluşturuldu.')
+    mutationFn: ({ qcDone, photo }: { qcDone: boolean; photo: File | null }) =>
+      createRecordWithQualityCheck('/modules/warehouse-control', buildPayload(), qcDone, photo),
+    onSuccess: (_, { qcDone }) => {
+      toast.success(qcDone ? 'Kayıt oluşturuldu, kalite kontrol onaylandı.' : 'Kayıt oluşturuldu, kalite kontrol bekliyor.')
       onSuccess()
       onClose()
     },
-    onError: (e: any) => toast.error(e?.message ?? 'Kayıt oluşturulamadı.'),
+    onError: (e) => { setQcOpen(false); toast.error(apiErrorMessage(e, 'Kayıt oluşturulamadı.')) },
   })
 
+  // Kaydet → önce kalite kontrol pop-up'ı
   const handleSubmit = () => {
     if (!title.trim()) { toast.error('Başlık zorunludur.'); return }
+    if (productId && type !== 'inspection' && !quantity) { toast.error('Ürün seçildiğinde miktar zorunludur.'); return }
+    if (type === 'transfer' && !toWarehouseId) { toast.error('Transfer için hedef depo seçin.'); return }
+    if (type === 'adjustment' && !direction) { toast.error('Düzeltme için artış veya azalış seçin.'); return }
+    setQcOpen(true)
+  }
+
+  const buildPayload = () => {
     const payload: Record<string, any> = { title, status: 'pending', priority, transaction_date: transactionDate }
     if (type) payload.type = type
     if (productId) payload.product_id = productId
@@ -227,13 +263,23 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
     if (expiryDate) payload.expiry_date = expiryDate
     if (departmentId) payload.department_id = departmentId
     if (description) payload.description = description
-    createMutation.mutate(payload)
+    if (warehouseId) payload.warehouse_id = warehouseId
+    if (type === 'transfer' && toWarehouseId) payload.to_warehouse_id = toWarehouseId
+    if (type === 'adjustment' && direction) payload.direction = direction
+    return payload
   }
 
   const isTransfer = type === 'transfer'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      {qcOpen && (
+        <QualityCheckPrompt
+          submitting={createMutation.isPending}
+          onBack={() => setQcOpen(false)}
+          onSubmit={(qcDone, photo) => createMutation.mutate({ qcDone, photo })}
+        />
+      )}
       <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b border-zinc-200 dark:border-zinc-800">
           <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Yeni Kontrol Kaydı</h2>
@@ -294,6 +340,18 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
             </div>
           </div>
 
+          <WarehouseFields
+            type={type}
+            warehouseId={warehouseId}
+            onWarehouseChange={setWarehouseId}
+            toWarehouseId={toWarehouseId}
+            onToWarehouseChange={setToWarehouseId}
+            direction={direction}
+            onDirectionChange={setDirection}
+          />
+
+          <FefoHint productId={productId} warehouseId={warehouseId} type={type} batchNumber={batchNumber} unit={unit} />
+
           <div>
             <label className={labelCls}>Öncelik</label>
             <select className={inputCls} value={priority} onChange={e => setPriority(e.target.value)}>
@@ -336,22 +394,22 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
           {isTransfer ? (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>Nereden (Çıkış)</label>
+                <label className={labelCls}>Çıkış Rafı / Bölmesi</label>
                 <input className={inputCls} placeholder="A-01, Depo 1..." value={fromLocation} onChange={e => setFromLocation(e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Nereye (Giriş)</label>
+                <label className={labelCls}>Giriş Rafı / Bölmesi</label>
                 <input className={inputCls} placeholder="B-05, Depo 2..." value={toLocation} onChange={e => setToLocation(e.target.value)} />
               </div>
             </div>
           ) : type === 'stock_in' ? (
             <div>
-              <label className={labelCls}>Giriş Lokasyonu</label>
+              <label className={labelCls}>Raf / Bölme</label>
               <input className={inputCls} placeholder="Raf, bölme..." value={toLocation} onChange={e => setToLocation(e.target.value)} />
             </div>
           ) : (
             <div>
-              <label className={labelCls}>Çıkış Lokasyonu</label>
+              <label className={labelCls}>Raf / Bölme</label>
               <input className={inputCls} placeholder="Raf, bölme..." value={fromLocation} onChange={e => setFromLocation(e.target.value)} />
             </div>
           )}
@@ -377,7 +435,7 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
               <label className={labelCls}>Departman</label>
               <select className={inputCls} value={departmentId} onChange={e => setDepartmentId(e.target.value)}>
                 <option value="">Seçiniz</option>
-                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                <DepartmentOptions departments={departments} />
               </select>
             </div>
           )}
@@ -406,7 +464,8 @@ function ProductCatalogModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient()
   const [showAdd, setShowAdd] = useState(false)
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState({ name: '', sku: '', barcode: '', unit: 'adet', category: '', unit_price: '', min_stock: '0', description: '' })
+  const [form, setForm] = useState({ name: '', sku: '', barcode: '', unit: 'adet', category: '', unit_price: '', min_stock: '0', description: '', opening: '', warehouse_id: '', lead_time_days: '', safety_stock: '' })
+  const { data: warehouses = [] } = useWarehouses()
 
   const { data, isLoading } = useQuery({
     queryKey: ['warehouse-products-catalog', search],
@@ -418,9 +477,12 @@ function ProductCatalogModal({ onClose }: { onClose: () => void }) {
     onSuccess: () => {
       toast.success('Ürün eklendi.')
       qc.invalidateQueries({ queryKey: ['warehouse-products-catalog'] })
+      qc.invalidateQueries({ queryKey: ['stock-balances'] })
+      qc.invalidateQueries({ queryKey: ['stock-risk'] })
+      qc.invalidateQueries({ queryKey: ['stock-warehouses'] })
       qc.invalidateQueries({ queryKey: ['warehouse-products-search'] })
       setShowAdd(false)
-      setForm({ name: '', sku: '', barcode: '', unit: 'adet', category: '', unit_price: '', min_stock: '0', description: '' })
+      setForm({ name: '', sku: '', barcode: '', unit: 'adet', category: '', unit_price: '', min_stock: '0', description: '', opening: '', warehouse_id: '', lead_time_days: '', safety_stock: '' })
     },
     onError: (e: any) => toast.error(e?.message ?? 'Ürün eklenemedi.'),
   })
@@ -430,6 +492,9 @@ function ProductCatalogModal({ onClose }: { onClose: () => void }) {
     onSuccess: () => {
       toast.success('Ürün silindi.')
       qc.invalidateQueries({ queryKey: ['warehouse-products-catalog'] })
+      qc.invalidateQueries({ queryKey: ['stock-balances'] })
+      qc.invalidateQueries({ queryKey: ['stock-risk'] })
+      qc.invalidateQueries({ queryKey: ['stock-warehouses'] })
       qc.invalidateQueries({ queryKey: ['warehouse-products-search'] })
     },
     onError: (e: any) => toast.error(e?.message ?? 'Silinemedi.'),
@@ -491,9 +556,29 @@ function ProductCatalogModal({ onClose }: { onClose: () => void }) {
               </div>
               <div>
                 <label className={labelCls}>Min. Stok (Kritik Sınır)</label>
-                <input type="number" min="0" className={inputCls} value={form.min_stock} onChange={e => setForm(f => ({ ...f, min_stock: e.target.value }))} placeholder="0" />
+                <input type="number" min="0" step="any" className={inputCls} value={form.min_stock} onChange={e => setForm(f => ({ ...f, min_stock: e.target.value }))} placeholder="0" />
+              </div>
+              <div>
+                <label className={labelCls}>Tedarik Süresi (gün)</label>
+                <input type="number" min="1" max="365" className={inputCls} value={form.lead_time_days} onChange={e => setForm(f => ({ ...f, lead_time_days: e.target.value }))} placeholder="Varsayılan 7" />
+              </div>
+              <div>
+                <label className={labelCls}>Güvenlik Stoğu</label>
+                <input type="number" min="0" step="any" className={inputCls} value={form.safety_stock} onChange={e => setForm(f => ({ ...f, safety_stock: e.target.value }))} placeholder="0" />
+              </div>
+              <div>
+                <label className={labelCls}>Açılış Stoğu</label>
+                <input type="number" min="0" step="any" className={inputCls} value={form.opening} onChange={e => setForm(f => ({ ...f, opening: e.target.value }))} placeholder="0" />
+              </div>
+              <div>
+                <label className={labelCls}>Açılış Deposu</label>
+                <select className={inputCls} value={form.warehouse_id} onChange={e => setForm(f => ({ ...f, warehouse_id: e.target.value }))}>
+                  <option value="">Varsayılan depo</option>
+                  {warehouses.filter(w => w.is_active).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
               </div>
             </div>
+            <p className="mt-2 text-[11px] text-zinc-400">Stok sonradan sadece giriş/çıkış/düzeltme/sayım kayıtlarıyla değişir.</p>
             <div className="flex justify-end gap-2 mt-3">
               <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800">İptal</button>
               <button
@@ -506,7 +591,11 @@ function ProductCatalogModal({ onClose }: { onClose: () => void }) {
                   p.unit = form.unit
                   if (form.category) p.category = form.category
                   if (form.unit_price) p.unit_price = parseFloat(form.unit_price)
-                  p.min_stock = parseInt(form.min_stock) || 0
+                  p.min_stock = parseFloat(form.min_stock) || 0
+                  if (form.opening) p.current_stock = parseFloat(form.opening)
+                  if (form.warehouse_id) p.warehouse_id = form.warehouse_id
+                  if (form.lead_time_days) p.lead_time_days = parseInt(form.lead_time_days)
+                  if (form.safety_stock) p.safety_stock = parseFloat(form.safety_stock)
                   createMutation.mutate(p)
                 }}
                 className="px-3 py-1.5 text-xs font-medium rounded-lg bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-60"
@@ -606,7 +695,7 @@ function ProductCatalogModal({ onClose }: { onClose: () => void }) {
 
 interface PackagingCreateModalProps {
   onClose: () => void
-  departments: { id: string; name: string }[]
+  departments: DepartmentOption[]
   onSuccess: () => void
 }
 
@@ -697,7 +786,7 @@ function PackagingCreateModal({ onClose, departments, onSuccess }: PackagingCrea
               <label className={labelCls}>Departman</label>
               <select className={inputCls} value={departmentId} onChange={e => setDepartmentId(e.target.value)}>
                 <option value="">Seçiniz</option>
-                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                <DepartmentOptions departments={departments} />
               </select>
             </div>
           )}
@@ -724,7 +813,7 @@ function PackagingCreateModal({ onClose, departments, onSuccess }: PackagingCrea
 
 interface WarehouseControlTabSectionProps {
   tabId: 'depolama' | 'stok' | 'yukleme'
-  departments: { id: string; name: string }[]
+  departments: DepartmentOption[]
 }
 
 function WarehouseControlTabSection({ tabId, departments }: WarehouseControlTabSectionProps) {
@@ -735,6 +824,7 @@ function WarehouseControlTabSection({ tabId, departments }: WarehouseControlTabS
   const [typeChip, setTypeChip] = useState('all')
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [qcRecord, setQcRecord] = useState<WarehouseRecord | null>(null)
 
   const stokChips = [
     { id: 'all',         label: 'Tümü' },
@@ -780,12 +870,16 @@ function WarehouseControlTabSection({ tabId, departments }: WarehouseControlTabS
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => warehouseControlService.updateStatus(id, status),
-    onSuccess: () => {
-      toast.success('Durum güncellendi.')
+    onSuccess: (_, { status }) => {
+      toast.success(status === 'approved' ? 'Onaylandı, stoğa işlendi.' : status === 'cancelled' ? 'İptal edildi.' : 'Durum güncellendi.')
       qc.invalidateQueries({ queryKey: ['wh-control-records'] })
       qc.invalidateQueries({ queryKey: ['wh-control-stats'] })
+      qc.invalidateQueries({ queryKey: ['stock-balances'] })
+      qc.invalidateQueries({ queryKey: ['stock-risk'] })
+      qc.invalidateQueries({ queryKey: ['stock-warehouses'] })
+      qc.invalidateQueries({ queryKey: ['wh-product-stats'] })
     },
-    onError: (e: any) => toast.error(e?.message ?? 'Durum güncellenemedi.'),
+    onError: (e) => toast.error(apiErrorMessage(e, 'Durum güncellenemedi.')),
   })
 
   const handleSearch = (e: React.FormEvent) => {
@@ -817,7 +911,17 @@ function WarehouseControlTabSection({ tabId, departments }: WarehouseControlTabS
     }),
     col.accessor('status', {
       header: 'Durum',
-      cell: info => <StatusBadge status={info.getValue()} label={info.row.original.status_label} />,
+      cell: info => (
+        <div className="flex flex-col items-start">
+          <StatusBadge status={info.getValue()} label={info.row.original.status_label} />
+          <RecordStockState record={info.row.original} />
+        </div>
+      ),
+    }),
+    col.display({
+      id: 'quality_check',
+      header: 'Kalite Kontrol',
+      cell: info => <QcBadge record={info.row.original} onClick={() => setQcRecord(info.row.original)} />,
     }),
     col.accessor('quantity', {
       header: 'Miktar',
@@ -965,6 +1069,15 @@ function WarehouseControlTabSection({ tabId, departments }: WarehouseControlTabS
           onSuccess={() => qc.invalidateQueries({ queryKey: ['wh-control-records', tabId] })}
         />
       )}
+
+      {qcRecord && (
+        <QcDetailModal
+          record={qcRecord}
+          modulePath="/modules/warehouse-control"
+          onClose={() => setQcRecord(null)}
+          onApproved={() => qc.invalidateQueries({ queryKey: ['wh-control-records'] })}
+        />
+      )}
     </div>
   )
 }
@@ -972,7 +1085,7 @@ function WarehouseControlTabSection({ tabId, departments }: WarehouseControlTabS
 // ─── Packaging Tab Section ────────────────────────────────────────────────────
 
 interface PackagingTabSectionProps {
-  departments: { id: string; name: string }[]
+  departments: DepartmentOption[]
 }
 
 function PackagingTabSection({ departments }: PackagingTabSectionProps) {
@@ -1151,6 +1264,7 @@ function PackagingTabSection({ departments }: PackagingTabSectionProps) {
 export default function WarehouseControlPage() {
   const [activeTab, setActiveTab] = useState('depolama')
   const [showProductCatalog, setShowProductCatalog] = useState(false)
+  const [showWarehouses, setShowWarehouses] = useState(false)
 
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ['wh-control-stats'],
@@ -1166,7 +1280,7 @@ export default function WarehouseControlPage() {
     queryKey: ['company-departments-list'],
     queryFn: () => get<any>('/company/departments').then(r => r.data ?? []),
   })
-  const departments: { id: string; name: string }[] = deptData ?? []
+  const departments: DepartmentOption[] = deptData ?? []
 
   return (
     <div className="space-y-6">
@@ -1175,13 +1289,22 @@ export default function WarehouseControlPage() {
         description="Operasyonel depo kontrolü"
         breadcrumbs={[{ label: 'Modüller' }, { label: 'Depo Kontrolcüsü' }]}
         actions={
-          <button
-            onClick={() => setShowProductCatalog(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            <BoxSelect className="h-4 w-4" />
-            Ürün Kataloğu
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowWarehouses(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <Building2 className="h-4 w-4" />
+              Depolar
+            </button>
+            <button
+              onClick={() => setShowProductCatalog(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <BoxSelect className="h-4 w-4" />
+              Ürün Kataloğu
+            </button>
+          </div>
         }
       />
 
@@ -1268,10 +1391,21 @@ export default function WarehouseControlPage() {
           {activeTab === 'depolama' && <WarehouseControlTabSection tabId="depolama" departments={departments} />}
           {activeTab === 'stok' && <WarehouseControlTabSection tabId="stok" departments={departments} />}
           {activeTab === 'yukleme' && <WarehouseControlTabSection tabId="yukleme" departments={departments} />}
+          {activeTab === 'stok-durumu' && <StockOverview />}
+          {activeTab === 'stok-riski' && <StockRiskPanel />}
+          {activeTab === 'satin-alma' && <PurchasingPanel />}
+          {activeTab === 'skt-olu-stok' && <ExpiryDeadStockPanel />}
+          {activeTab === 'depo-transfer' && <TransferPanel />}
+          {activeTab === 'anomaliler' && <AnomalyPanel />}
+          {activeTab === 'what-if' && <WhatIfPanel />}
+          {activeTab === 'depo-kpi' && <KpiPanel />}
+          {activeTab === 'abc-xyz' && <AbcXyzPanel />}
+          {activeTab === 'raporlar' && <ReportsPanel />}
           {activeTab === 'paketleme' && <PackagingTabSection departments={departments} />}
         </div>
       </div>
 
+      {showWarehouses && <WarehousesModal onClose={() => setShowWarehouses(false)} />}
       {showProductCatalog && (
         <ProductCatalogModal onClose={() => setShowProductCatalog(false)} />
       )}

@@ -21,6 +21,7 @@ interface Department {
   manager: { id: string; name: string; email: string } | null
   users_count: number
   status: string
+  system_active?: boolean
   created_at: string
 }
 
@@ -147,6 +148,32 @@ export default function DepartmentsPage() {
           <span className="text-sm text-zinc-600 dark:text-zinc-400">{info.getValue()}</span>
         </div>
       ),
+    }),
+    col.accessor('status', {
+      header: 'Durum',
+      cell: (info) => {
+        const d = info.row.original
+        if (d.system_active === false) {
+          return (
+            <span
+              title="Sistem yöneticisi tarafından pasife alındı"
+              className="text-xs font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500"
+            >
+              Sistem tarafından pasif
+            </span>
+          )
+        }
+        const active = info.getValue() === 'active'
+        return (
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+            active
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+              : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500'
+          }`}>
+            {active ? 'Aktif' : 'Pasif'}
+          </span>
+        )
+      },
     }),
     col.accessor('created_at', {
       header: 'Oluşturulma',
