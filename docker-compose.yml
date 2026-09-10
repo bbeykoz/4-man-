@@ -1,0 +1,153 @@
+version: '3.9'
+
+services:
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: bytepanel_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./backend:/var/www/html
+    depends_on:
+      - laravel
+      - nextjs
+    networks:
+      - bytepanel
+
+  laravel:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bytepanel_laravel
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+    environment:
+      APP_ENV: local
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: bytepanel
+      DB_USERNAME: bytepanel
+      DB_PASSWORD: secret
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      REDIS_CLIENT: predis
+      REDIS_HOST: redis
+      REDIS_PASSWORD: null
+      REDIS_PORT: 6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - bytepanel
+
+  nextjs:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: bytepanel_nextjs
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost/api/v1
+    depends_on:
+      - laravel
+    networks:
+      - bytepanel
+
+  horizon:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bytepanel_horizon
+    working_dir: /var/www/html
+    command: php artisan horizon
+    volumes:
+      - ./backend:/var/www/html
+    environment:
+      APP_ENV: local
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: bytepanel
+      DB_USERNAME: bytepanel
+      DB_PASSWORD: secret
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      REDIS_CLIENT: predis
+      REDIS_HOST: redis
+      REDIS_PASSWORD: null
+      REDIS_PORT: 6379
+    depends_on:
+      - laravel
+      - redis
+    networks:
+      - bytepanel
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: bytepanel_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: bytepanel
+      POSTGRES_USER: bytepanel
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - bytepanel
+
+  redis:
+    image: redis:7-alpine
+    container_name: bytepanel_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - bytepanel
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: bytepanel_mail
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - bytepanel
+
+  minio:
+    image: minio/minio:latest
+    container_name: bytepanel_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: bytepanel
+      MINIO_ROOT_PASSWORD: secret123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - bytepanel
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+networks:
+  bytepanel:
+    driver: bridge
