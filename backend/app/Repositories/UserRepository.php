@@ -5,6 +5,7 @@ namespace App\Repositories;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 class UserRepository extends BaseRepository
 {
@@ -33,9 +34,10 @@ class UserRepository extends BaseRepository
             ->with(['roles', 'department']);
 
         if ($search) {
+            $likeOp = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
             $query->where(fn($q) => $q
-                ->where('name', 'ilike', "%{$search}%")
-                ->orWhere('email', 'ilike', "%{$search}%")
+                ->where('name', $likeOp, "%{$search}%")
+                ->orWhere('email', $likeOp, "%{$search}%")
             );
         }
 
@@ -89,9 +91,10 @@ class UserRepository extends BaseRepository
 
         if (!empty($filters['search'])) {
             $s = $filters['search'];
+            $likeOp = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
             $query->where(fn($q) => $q
-                ->where('name', 'ilike', "%{$s}%")
-                ->orWhere('email', 'ilike', "%{$s}%")
+                ->where('name', $likeOp, "%{$s}%")
+                ->orWhere('email', $likeOp, "%{$s}%")
             );
         }
 

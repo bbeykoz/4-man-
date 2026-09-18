@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Models\ActivityLog;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 
 class ActivityLogRepository extends BaseRepository
 {
@@ -30,7 +31,8 @@ class ActivityLogRepository extends BaseRepository
         }
 
         if (!empty($filters['action'])) {
-            $query->where('action', 'ilike', "%{$filters['action']}%");
+            $likeOp = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+            $query->where('action', $likeOp, "%{$filters['action']}%");
         }
 
         if (!empty($filters['model_type'])) {

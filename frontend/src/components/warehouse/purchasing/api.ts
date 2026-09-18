@@ -54,6 +54,7 @@ export interface PoItem {
   damaged_qty: number
   remaining: number
   suggestion?: { reason?: string; suggested_qty?: number } | null
+  receipt?: { original_name: string | null; mime: string | null; uploaded_at: string | null } | null
 }
 
 export interface PurchaseOrder {
@@ -61,7 +62,7 @@ export interface PurchaseOrder {
   po_number: string
   status: PoStatus
   source: 'manual' | 'suggestion'
-  supplier: { id: string; name: string; code: string } | null
+  supplier: { id: string; name: string; code: string; address?: string | null; phone?: string | null; email?: string | null; tax_number?: string | null } | null
   warehouse: { id: string; name: string } | null
   order_date: string | null
   expected_date: string | null
@@ -88,6 +89,7 @@ export const PO_STATUS: Record<PoStatus, { label: string; cls: string }> = {
 
 export const inputCls = 'px-3 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500'
 export const labelCls = 'block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1'
+export const MULTIPART = { headers: { 'Content-Type': 'multipart/form-data' } }
 
 export function formatMoney(n: number | null | undefined, currency = 'TRY'): string {
   if (n == null) return '—'

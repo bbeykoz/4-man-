@@ -7,9 +7,14 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Services\ActivityLogService;
 use App\Services\Stock\PurchasingService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /** Satın alma siparişleri ve otomatik sipariş önerileri. */
 class PurchaseOrderController extends Controller
@@ -17,6 +22,7 @@ class PurchaseOrderController extends Controller
     private const VIEW_PERM   = 'warehouse.records.view';
     private const CREATE_PERM = 'warehouse.records.create';
     private const EDIT_PERM   = 'warehouse.records.edit';
+    private const RECEIPT_DISK = 'local';
 
     public function __construct(
         private readonly PurchasingService $purchasing,
@@ -68,7 +74,7 @@ class PurchaseOrderController extends Controller
             ->withCount('items')
             ->when($request->input('status'), fn($q, $s) => $q->where('status', $s))
             ->when($request->input('supplier_id'), fn($q, $s) => $q->where('supplier_id', $s))
-            ->when($request->input('search'), fn($q, $s) => $q->where('po_number', 'ilike', "%{$s}%"))
+            ->when($request->input('search'), fn($q, $s) => $q->where('po_number', DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like', "%{$s}%"))
             ->orderByDesc('created_at')
             ->paginate($request->integer('per_page', 15));
 
@@ -149,6 +155,124 @@ class PurchaseOrderController extends Controller
         ]);
     }
 
+    // ─── Fatura PDF'i ─────────────────────────────────────────────────
+
+    private const STATUS_LABELS = [
+        PurchaseOrder::STATUS_DRAFT     => 'Taslak',
+        PurchaseOrder::STATUS_SENT      => 'Gönderildi',
+        PurchaseOrder::STATUS_PARTIAL   => 'Kısmi Teslim',
+        PurchaseOrder::STATUS_RECEIVED  => 'Teslim Alındı',
+        PurchaseOrder::STATUS_CANCELLED => 'İptal',
+    ];
+
+    /** Siparişin tamamını (tüm kalemler + toplam) tek bir PDF fatura olarak anlık üretir. */
+    public function invoicePdf(Request $request, string $id): Response
+    {
+        $this->authorizePerm($request, self::VIEW_PERM);
+
+        $po      = $this->find($request, $id);
+        $company = $request->user()->company;
+
+        $pdf = Pdf::loadView('purchase-orders.invoice', [
+            'po'          => $po,
+            'company'     => $company,
+            'statusLabel' => self::STATUS_LABELS[$po->status] ?? $po->status,
+        ])->setPaper('a4');
+
+        return $pdf->stream("fatura-{$po->po_number}.pdf");
+    }
+
+    // ─── Kalem fiş/faturası ─────────────────────────────────────────
+
+    /** Sipariş kalemine fiş/fatura yükler (görsel veya PDF); varsa öncekini değiştirir. */
+    public function uploadReceipt(Request $request, string $id, string $itemId): JsonResponse
+    {
+        $this->authorizePerm($request, self::EDIT_PERM);
+
+        $request->validate([
+            'receipt' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:10240'],
+        ], [
+            'receipt.required' => 'Fiş/fatura dosyası zorunlu.',
+            'receipt.mimes'    => 'Sadece görsel (jpg, png, webp) veya PDF yükleyebilirsiniz.',
+            'receipt.max'      => 'Dosya en fazla 10 MB olabilir.',
+        ]);
+
+        $user = $request->user();
+        $item = $this->findItem($request, $id, $itemId);
+        $file = $request->file('receipt');
+        $path = $file->store("purchase-receipts/{$user->company_id}", self::RECEIPT_DISK);
+
+        if ($item->receipt_path) {
+            Storage::disk($item->receipt_disk ?? self::RECEIPT_DISK)->delete($item->receipt_path);
+        }
+
+        $item->update([
+            'receipt_path'          => $path,
+            'receipt_disk'          => self::RECEIPT_DISK,
+            'receipt_original_name' => $file->getClientOriginalName(),
+            'receipt_mime'          => $file->getClientMimeType(),
+            'receipt_uploaded_at'   => now(),
+            'receipt_uploaded_by'   => $user->id,
+        ]);
+
+        $this->activityLog->log('purchase_order.receipt_uploaded', $item->purchaseOrder, $user, newValues: ['item_id' => $itemId]);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $this->present($this->find($request, $id)),
+            'message' => 'Fiş/fatura yüklendi.',
+        ]);
+    }
+
+    /** Kalemin fiş/fatura dosyasını yetkili kullanıcıya akıtır (herkese açık değil). */
+    public function receiptFile(Request $request, string $id, string $itemId): StreamedResponse
+    {
+        $this->authorizePerm($request, self::VIEW_PERM);
+
+        $item = $this->findItem($request, $id, $itemId);
+        abort_unless($item->receipt_path, 404);
+
+        $disk = Storage::disk($item->receipt_disk ?? self::RECEIPT_DISK);
+        abort_unless($disk->exists($item->receipt_path), 404);
+
+        return $disk->response($item->receipt_path, $item->receipt_original_name, [
+            'Content-Type'  => $item->receipt_mime ?? 'application/octet-stream',
+            'Cache-Control' => 'private, max-age=3600',
+        ]);
+    }
+
+    /** Kalemden fiş/faturayı kaldırır. */
+    public function deleteReceipt(Request $request, string $id, string $itemId): JsonResponse
+    {
+        $this->authorizePerm($request, self::EDIT_PERM);
+
+        $item = $this->findItem($request, $id, $itemId);
+
+        if ($item->receipt_path) {
+            Storage::disk($item->receipt_disk ?? self::RECEIPT_DISK)->delete($item->receipt_path);
+        }
+
+        $item->update([
+            'receipt_path' => null, 'receipt_disk' => null, 'receipt_original_name' => null,
+            'receipt_mime' => null, 'receipt_uploaded_at' => null, 'receipt_uploaded_by' => null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $this->present($this->find($request, $id)),
+            'message' => 'Fiş/fatura kaldırıldı.',
+        ]);
+    }
+
+    private function findItem(Request $request, string $id, string $itemId): PurchaseOrderItem
+    {
+        $po   = $this->find($request, $id);
+        $item = $po->items->firstWhere('id', $itemId);
+        abort_unless($item, 404);
+
+        return $item;
+    }
+
     // ─── Yardımcılar ────────────────────────────────────────────────
 
     private function find(Request $request, string $id): PurchaseOrder
@@ -185,7 +309,11 @@ class PurchaseOrderController extends Controller
             'po_number'     => $po->po_number,
             'status'        => $po->status,
             'source'        => $po->source,
-            'supplier'      => $po->supplier ? ['id' => $po->supplier->id, 'name' => $po->supplier->name, 'code' => $po->supplier->code] : null,
+            'supplier'      => $po->supplier ? [
+                'id' => $po->supplier->id, 'name' => $po->supplier->name, 'code' => $po->supplier->code,
+                'address' => $po->supplier->address, 'phone' => $po->supplier->phone,
+                'email' => $po->supplier->email, 'tax_number' => $po->supplier->tax_number,
+            ] : null,
             'warehouse'     => $po->warehouse ? ['id' => $po->warehouse->id, 'name' => $po->warehouse->name] : null,
             'order_date'    => $po->order_date?->toDateString(),
             'expected_date' => $po->expected_date?->toDateString(),
@@ -213,6 +341,11 @@ class PurchaseOrderController extends Controller
                 'damaged_qty'  => $i->damaged_qty,
                 'remaining'    => $i->remainingQty(),
                 'suggestion'   => $i->suggestion,
+                'receipt'      => $i->receipt_path ? [
+                    'original_name' => $i->receipt_original_name,
+                    'mime'          => $i->receipt_mime,
+                    'uploaded_at'   => $i->receipt_uploaded_at?->toISOString(),
+                ] : null,
             ]);
             $data['receipts'] = $po->relationLoaded('receipts') ? $po->receipts->map(fn($r) => [
                 'id'          => $r->id,

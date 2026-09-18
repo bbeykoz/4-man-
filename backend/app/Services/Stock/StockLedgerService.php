@@ -190,19 +190,24 @@ class StockLedgerService
     /** Pozitif lot bakiyeleri, FEFO sırasıyla (SKT'si en yakın önce, SKT'siz en sona). */
     public function lotBalances(string $companyId, string $productId, string $warehouseId, string $bucket): Collection
     {
+        // Not: SQLite'ta bound parametreli havingRaw('SUM(quantity) > ?', ...) sayısal
+        // karşılaştırmayı tip uyuşmazlığı yüzünden hep başarısız yapıyordu (satır hiç
+        // dönmüyordu). Sıfır/negatif bakiyeleri SQL yerine burada eleyerek çözüyoruz;
+        // lot sayısı ürün+depo başına zaten küçük olduğu için maliyeti yok.
         return StockMovement::where('company_id', $companyId)
             ->where('product_id', $productId)
             ->where('warehouse_id', $warehouseId)
             ->where('bucket', $bucket)
             ->groupBy('lot_number', 'expiry_date')
-            ->havingRaw('SUM(quantity) > ?', [self::EPSILON])
             ->orderByRaw('expiry_date IS NULL, expiry_date ASC, lot_number ASC')
             ->get(['lot_number', 'expiry_date', DB::raw('SUM(quantity) as qty')])
             ->map(fn($r) => [
                 'lot_number'  => $r->lot_number,
                 'expiry_date' => $r->expiry_date ? substr((string) $r->expiry_date, 0, 10) : null,
                 'qty'         => (float) $r->qty,
-            ]);
+            ])
+            ->filter(fn($row) => $row['qty'] > self::EPSILON)
+            ->values();
     }
 
     // ─── Hareket tipleri ────────────────────────────────────────────

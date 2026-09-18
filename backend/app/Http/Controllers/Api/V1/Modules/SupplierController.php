@@ -8,6 +8,7 @@ use App\Models\Supplier;
 use App\Services\Stock\SupplierPerformanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /** Tedarikçi kartları (depo modülü yetkileriyle). */
@@ -21,9 +22,11 @@ class SupplierController extends Controller
         $this->authorizePerm($request, self::VIEW_PERM);
         $companyId = $request->user()->company_id;
 
+        $likeOp = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+
         $suppliers = Supplier::forCompany($companyId)
             ->when($request->input('search'), fn($q, $s) => $q->where(fn($w) => $w
-                ->where('name', 'ilike', "%{$s}%")->orWhere('code', 'ilike', "%{$s}%")))
+                ->where('name', $likeOp, "%{$s}%")->orWhere('code', $likeOp, "%{$s}%")))
             ->when($request->boolean('active_only'), fn($q) => $q->active())
             ->withCount(['products', 'purchaseOrders as open_orders_count' => fn($q) => $q->whereIn('status', PurchaseOrder::OPEN_STATUSES)])
             ->orderBy('name')

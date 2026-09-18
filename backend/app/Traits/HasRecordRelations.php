@@ -63,10 +63,13 @@ trait HasRecordRelations
 
     public function scopeSearch($query, string $term)
     {
+        // 'ilike' sadece PostgreSQL'de var; SQLite/MySQL'de 'like' zaten case-insensitive.
+        $operator = $query->getModel()->getConnection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+
         return $query->where(fn($q) => $q
-            ->where('title', 'ilike', "%{$term}%")
-            ->orWhere('description', 'ilike', "%{$term}%")
-            ->orWhere('record_number', 'ilike', "%{$term}%")
+            ->where('title', $operator, "%{$term}%")
+            ->orWhere('description', $operator, "%{$term}%")
+            ->orWhere('record_number', $operator, "%{$term}%")
         );
     }
 }

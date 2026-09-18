@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Loader2, PackageCheck, Plus, Search, Send, Trash2, X } from 'lucide-react'
+import { AlertTriangle, FileText, Loader2, PackageCheck, Plus, Search, Send, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { get, post, put } from '@/lib/api'
+import { api, get, post, put } from '@/lib/api'
 import { cn, formatDate, formatDateTime } from '@/lib/utils'
 import { ConfirmModal } from '@/components/common/ConfirmModal'
 import type { WarehouseProduct } from '@/types/api.types'
@@ -34,10 +34,42 @@ export function StatusPill({ po }: { po: Pick<PurchaseOrder, 'status' | 'is_late
   )
 }
 
+/**
+ * Sunucuda anlık üretilen gerçek fatura PDF'ini (tüm kalemler + toplam) yeni sekmede açar.
+ * Pop-up engelleyiciler await sonrası açılan pencereleri sessizce bloklar; bu yüzden
+ * sekme tıklama anında hemen (senkron) açılır, PDF blob olarak gelince içine yönlendirilir.
+ */
+function useInvoicePdf() {
+  const [loadingId, setLoadingId] = useState<string | null>(null)
+
+  const open = async (orderId: string) => {
+    const newTab = window.open('', '_blank')
+    setLoadingId(orderId)
+    try {
+      const res = await api.get<Blob>(`/modules/purchasing/orders/${orderId}/invoice-pdf`, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      if (newTab) {
+        newTab.location.href = url
+      } else {
+        toast.error('Tarayıcı açılır pencereyi engelledi. Adres çubuğundaki engel simgesinden izin verip tekrar deneyin.')
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      newTab?.close()
+      toast.error('Fatura oluşturulamadı.')
+    } finally {
+      setLoadingId(null)
+    }
+  }
+
+  return { open, loadingId }
+}
+
 export function OrdersTab() {
   const [status, setStatus] = useState<PoStatus | ''>('')
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const invoicePdf = useInvoicePdf()
 
   const { data, isLoading } = useQuery({
     queryKey: ['purchasing-orders', status],
@@ -77,13 +109,14 @@ export function OrdersTab() {
               <th className="text-left px-3 py-2.5">Beklenen</th>
               <th className="text-right px-3 py-2.5">Kalem</th>
               <th className="text-right px-3 py-2.5">Tutar</th>
+              <th className="px-3 py-2.5"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {isLoading ? (
-              <tr><td colSpan={7} className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></td></tr>
+              <tr><td colSpan={8} className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></td></tr>
             ) : (data ?? []).length === 0 ? (
-              <tr><td colSpan={7} className="py-12 text-center text-zinc-400">Sipariş yok.</td></tr>
+              <tr><td colSpan={8} className="py-12 text-center text-zinc-400">Sipariş yok.</td></tr>
             ) : data!.map(po => (
               <tr key={po.id} onClick={() => setOpenId(po.id)} className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
                 <td className="px-3 py-2.5 font-mono text-xs">
@@ -96,6 +129,17 @@ export function OrdersTab() {
                 <td className="px-3 py-2.5 text-zinc-500">{po.expected_date ? formatDate(po.expected_date) : '—'}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums">{po.items_count}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(po.total_amount, po.currency)}</td>
+                <td className="px-3 py-2.5 text-right">
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); invoicePdf.open(po.id) }}
+                    disabled={invoicePdf.loadingId === po.id}
+                    title="Fatura PDF'ini Görüntüle"
+                    className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                  >
+                    {invoicePdf.loadingId === po.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -114,6 +158,7 @@ interface ReceiveLine { quantity: string; damaged: string; lot: string; expiry: 
 
 function OrderModal({ id, onClose }: { id: string; onClose: () => void }) {
   const invalidate = useInvalidatePurchasing()
+  const invoicePdf = useInvoicePdf()
   const [mode, setMode] = useState<'view' | 'receive' | 'edit'>('view')
   const [expectedDate, setExpectedDate] = useState('')
   const [receive, setReceive] = useState<Record<string, ReceiveLine>>({})
@@ -195,7 +240,17 @@ function OrderModal({ id, onClose }: { id: string; onClose: () => void }) {
               </p>
             </div>
           ) : <span />}
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400"><X className="h-4 w-4" /></button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => invoicePdf.open(id)}
+              disabled={invoicePdf.loadingId === id}
+              title="Fatura PDF'ini Görüntüle"
+              className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+            >
+              {invoicePdf.loadingId === id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400"><X className="h-4 w-4" /></button>
+          </div>
         </div>
 
         {isLoading || !po ? (

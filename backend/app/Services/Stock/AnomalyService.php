@@ -275,13 +275,17 @@ class AnomalyService
     /** Aynı ürüne 30 günde sık azalış düzeltmesi. */
     private function frequentAdjustments(string $companyId, array $ctx): Collection
     {
+        // Not: SQLite'ta bound parametreli havingRaw(...) sayısal karşılaştırmayı hep
+        // başarısız yaptığı için (bkz. StockLedgerService::lotBalances) eşiği burada
+        // PHP tarafında uyguluyoruz.
         $rows = WarehouseRecord::where('company_id', $companyId)
             ->where('type', 'adjustment')->where('direction', 'decrease')
             ->whereNotNull('posted_at')->whereNull('reversed_at')
             ->where('posted_at', '>=', $this->today->copy()->subDays(29))
             ->groupBy('product_id')
-            ->havingRaw('COUNT(*) >= ?', [$this->cfg['frequent_adjustments']])
-            ->get(['product_id', DB::raw('COUNT(*) as n'), DB::raw('SUM(quantity) as qty')]);
+            ->get(['product_id', DB::raw('COUNT(*) as n'), DB::raw('SUM(quantity) as qty')])
+            ->filter(fn($r) => $r->n >= $this->cfg['frequent_adjustments'])
+            ->values();
 
         $week = $this->today->format('o-\WW');
 

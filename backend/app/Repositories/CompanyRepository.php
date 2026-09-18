@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Models\Company;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 
 class CompanyRepository extends BaseRepository
 {
@@ -22,10 +23,11 @@ class CompanyRepository extends BaseRepository
         $query = $this->query()->with($with ?: ['owner']);
 
         if (!empty($filters['search'])) {
+            $likeOp = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
             $query->where(fn($q) => $q
-                ->where('name', 'ilike', "%{$filters['search']}%")
-                ->orWhere('email', 'ilike', "%{$filters['search']}%")
-                ->orWhere('slug', 'ilike', "%{$filters['search']}%")
+                ->where('name', $likeOp, "%{$filters['search']}%")
+                ->orWhere('email', $likeOp, "%{$filters['search']}%")
+                ->orWhere('slug', $likeOp, "%{$filters['search']}%")
             );
         }
 

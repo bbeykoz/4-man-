@@ -20,6 +20,7 @@ class PurchaseOrderItem extends Model
             'received_qty' => 'float',
             'damaged_qty'  => 'float',
             'suggestion'   => 'array',
+            'receipt_uploaded_at' => 'datetime',
         ];
     }
 

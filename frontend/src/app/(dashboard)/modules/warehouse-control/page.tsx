@@ -7,9 +7,10 @@ import {
   Package, ArrowDownCircle, ArrowUpCircle, ArrowLeftRight,
   SlidersHorizontal, ClipboardList, Layers,
   Clock, Ban, UserCircle, CheckCircle2,
-  Scan, ChevronDown, AlertTriangle, TrendingUp, BoxSelect, Loader2, Boxes, Building2, ShieldAlert, ShoppingCart, CalendarClock, Shuffle, Siren, FlaskConical, Gauge, Grid3x3, LineChart as LineChartIcon,
+  Scan, Camera, ChevronDown, AlertTriangle, TrendingUp, BoxSelect, Loader2, Boxes, Building2, ShieldAlert, ShoppingCart, CalendarClock, Shuffle, Siren, FlaskConical, Gauge, Grid3x3, LineChart as LineChartIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { PageHeader } from '@/components/common/PageHeader'
 import { StatsCard } from '@/components/common/StatsCard'
 import { DataTable } from '@/components/common/DataTable'
@@ -186,6 +187,9 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
   const [productId, setProductId] = useState('')
   const [productName, setProductName] = useState('')
   const [productQuery, setProductQuery] = useState('')
+  const [barcode, setBarcode] = useState('')
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [scannerError, setScannerError] = useState('')
   const [sku, setSku] = useState('')
   const [quantity, setQuantity] = useState('')
   const [unit, setUnit] = useState('')
@@ -202,11 +206,17 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
 
   // Barkod okutma: input'a barkod gelince ürün ara
   const barcodeRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const scannerRef = useRef<IScannerControls | null>(null)
+  useEffect(() => { barcodeRef.current?.focus() }, [])
+
   const handleBarcodeInput = async (barcode: string) => {
-    if (!barcode.trim()) return
+    const normalizedBarcode = barcode.trim()
+    if (!normalizedBarcode) return
+    setBarcode(normalizedBarcode)
     try {
-      const res = await get<any>(`/modules/warehouse-products/search?q=${encodeURIComponent(barcode)}`)
-      const exact = (res.data ?? []).find((p: WarehouseProduct) => p.barcode === barcode || p.sku === barcode)
+      const res = await get<any>(`/modules/warehouse-products/search?q=${encodeURIComponent(normalizedBarcode)}`)
+      const exact = (res.data ?? []).find((p: WarehouseProduct) => p.barcode === normalizedBarcode || p.sku === normalizedBarcode)
       if (exact) {
         applyProduct(exact)
         toast.success(`"${exact.name}" bulundu.`)
@@ -218,10 +228,56 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
     }
   }
 
+  useEffect(() => {
+    if (!scannerOpen) return
+
+    let cancelled = false
+
+    const startScanner = async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setScannerError('Kamera erişimi kullanılamıyor. Telefonu HTTPS bağlantısıyla açın.')
+          return
+        }
+
+        if (cancelled || !videoRef.current) {
+          return
+        }
+
+        const reader = new BrowserMultiFormatReader()
+        const controls = await reader.decodeFromConstraints(
+          { video: { facingMode: { ideal: 'environment' } }, audio: false },
+          videoRef.current,
+          async (result) => {
+            if (cancelled || !result) return
+            const value = result.getText()
+            setBarcode(value)
+            await handleBarcodeInput(value)
+            setScannerOpen(false)
+          },
+        )
+        scannerRef.current = controls
+      } catch (error) {
+        setScannerError(error instanceof DOMException && error.name === 'NotAllowedError'
+          ? 'Kamera izni verilmedi.'
+          : 'Kamera başlatılamadı. HTTPS bağlantısını ve kamera iznini kontrol edin.')
+      }
+    }
+
+    setScannerError('')
+    startScanner()
+    return () => {
+      cancelled = true
+      scannerRef.current?.stop()
+      scannerRef.current = null
+    }
+  }, [scannerOpen])
+
   const applyProduct = (p: WarehouseProduct) => {
     setProductId(p.id)
     setProductName(p.name)
     setProductQuery(p.name)
+    setBarcode(p.barcode ?? p.sku ?? '')
     setSku(p.sku ?? '')
     if (!unit) setUnit(p.unit)
     if (!title) setTitle(p.name)
@@ -295,15 +351,54 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
             <input
               ref={barcodeRef}
               className="flex-1 bg-transparent text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none placeholder:text-zinc-400"
+              value={barcode}
+              onChange={e => setBarcode(e.target.value)}
               placeholder="Barkod / QR okutun veya yazın → Enter"
               onKeyDown={e => {
                 if (e.key === 'Enter') {
                   handleBarcodeInput((e.target as HTMLInputElement).value);
-                  (e.target as HTMLInputElement).value = ''
                 }
               }}
             />
+            <button
+              type="button"
+              onClick={() => setScannerOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+              title="Telefon kamerasıyla barkod tara"
+            >
+              <Camera className="h-3.5 w-3.5" />
+              Kamera
+            </button>
+            {productId && <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />}
           </div>
+
+          {scannerOpen && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+              <div className="w-full max-w-md overflow-hidden rounded-2xl bg-zinc-950 shadow-2xl">
+                <div className="flex items-center justify-between px-4 py-3 text-white">
+                  <div>
+                    <h3 className="text-sm font-semibold">Barkod Tara</h3>
+                    <p className="text-xs text-zinc-400">Barkodu kamera çerçevesine hizalayın</p>
+                  </div>
+                  <button type="button" onClick={() => setScannerOpen(false)} className="rounded-lg p-2 text-zinc-300 hover:bg-white/10" aria-label="Tarayıcıyı kapat">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="relative aspect-video bg-black">
+                  <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
+                  <div className="pointer-events-none absolute inset-x-10 top-1/2 h-20 -translate-y-1/2 rounded-lg border-2 border-blue-400" />
+                </div>
+                {scannerError && <p className="px-4 py-3 text-xs text-amber-300">{scannerError}</p>}
+              </div>
+            </div>
+          )}
+
+          {productId && (
+            <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-300">
+              <span><strong>{productName}</strong>{barcode ? ` · ${barcode}` : ''}</span>
+              <button type="button" onClick={() => { setProductId(''); setProductName(''); setProductQuery(''); setBarcode(''); setSku('') }} className="text-xs underline underline-offset-2">Temizle</button>
+            </div>
+          )}
 
           {/* Ürün arama */}
           <div>
@@ -465,6 +560,10 @@ function ProductCatalogModal({ onClose }: { onClose: () => void }) {
   const [showAdd, setShowAdd] = useState(false)
   const [search, setSearch] = useState('')
   const [form, setForm] = useState({ name: '', sku: '', barcode: '', unit: 'adet', category: '', unit_price: '', min_stock: '0', description: '', opening: '', warehouse_id: '', lead_time_days: '', safety_stock: '' })
+  const [catalogScannerOpen, setCatalogScannerOpen] = useState(false)
+  const [catalogScannerError, setCatalogScannerError] = useState('')
+  const catalogVideoRef = useRef<HTMLVideoElement>(null)
+  const catalogScannerRef = useRef<IScannerControls | null>(null)
   const { data: warehouses = [] } = useWarehouses()
 
   const { data, isLoading } = useQuery({
@@ -502,6 +601,46 @@ function ProductCatalogModal({ onClose }: { onClose: () => void }) {
 
   const products: WarehouseProduct[] = data ?? []
 
+  useEffect(() => {
+    if (!catalogScannerOpen) return
+
+    let cancelled = false
+    const startScanner = async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia || !catalogVideoRef.current) {
+          setCatalogScannerError('Kamera erişimi kullanılamıyor. HTTPS bağlantısını kontrol edin.')
+          return
+        }
+
+        const reader = new BrowserMultiFormatReader()
+        const controls = await reader.decodeFromConstraints(
+          { video: { facingMode: { ideal: 'environment' } }, audio: false },
+          catalogVideoRef.current,
+          (result) => {
+            if (cancelled || !result) return
+            setForm(current => ({ ...current, barcode: result.getText() }))
+            setCatalogScannerOpen(false)
+            toast.success('Barkod forma aktarıldı.')
+          },
+        )
+        if (cancelled) controls.stop()
+        else catalogScannerRef.current = controls
+      } catch (error) {
+        setCatalogScannerError(error instanceof DOMException && error.name === 'NotAllowedError'
+          ? 'Kamera izni verilmedi.'
+          : 'Kamera başlatılamadı. HTTPS bağlantısını ve kamera iznini kontrol edin.')
+      }
+    }
+
+    setCatalogScannerError('')
+    startScanner()
+    return () => {
+      cancelled = true
+      catalogScannerRef.current?.stop()
+      catalogScannerRef.current = null
+    }
+  }, [catalogScannerOpen])
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
@@ -538,7 +677,18 @@ function ProductCatalogModal({ onClose }: { onClose: () => void }) {
               </div>
               <div>
                 <label className={labelCls}>Barkod</label>
-                <input className={inputCls} value={form.barcode} onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))} placeholder="EAN, QR..." />
+                <div className="flex gap-2">
+                  <input className={inputCls} value={form.barcode} onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))} placeholder="EAN, QR..." />
+                  <button
+                    type="button"
+                    onClick={() => setCatalogScannerOpen(true)}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
+                    title="Kamera ile barkod tara"
+                  >
+                    <Camera className="h-3.5 w-3.5" />
+                    Tara
+                  </button>
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Birim</label>
@@ -603,6 +753,26 @@ function ProductCatalogModal({ onClose }: { onClose: () => void }) {
                 {createMutation.isPending ? 'Kaydediliyor...' : 'Kaydet'}
               </button>
             </div>
+            {catalogScannerOpen && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+                <div className="w-full max-w-md overflow-hidden rounded-2xl bg-zinc-950 shadow-2xl">
+                  <div className="flex items-center justify-between px-4 py-3 text-white">
+                    <div>
+                      <h3 className="text-sm font-semibold">Barkod Tara</h3>
+                      <p className="text-xs text-zinc-400">Barkodu kamera çerçevesine hizalayın</p>
+                    </div>
+                    <button type="button" onClick={() => setCatalogScannerOpen(false)} className="rounded-lg p-2 text-zinc-300 hover:bg-white/10" aria-label="Tarayıcıyı kapat">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="relative aspect-video bg-black">
+                    <video ref={catalogVideoRef} className="h-full w-full object-cover" muted playsInline />
+                    <div className="pointer-events-none absolute inset-x-10 top-1/2 h-20 -translate-y-1/2 rounded-lg border-2 border-blue-400" />
+                  </div>
+                  {catalogScannerError && <p className="px-4 py-3 text-xs text-amber-300">{catalogScannerError}</p>}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

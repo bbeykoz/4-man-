@@ -285,6 +285,10 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
             Route::post('orders/{id}/send',    [PurchaseOrderController::class, 'send']);
             Route::post('orders/{id}/cancel',  [PurchaseOrderController::class, 'cancel']);
             Route::post('orders/{id}/receive', [PurchaseOrderController::class, 'receive']);
+            Route::get('orders/{id}/invoice-pdf', [PurchaseOrderController::class, 'invoicePdf']);
+            Route::post('orders/{id}/items/{itemId}/receipt',   [PurchaseOrderController::class, 'uploadReceipt']);
+            Route::get('orders/{id}/items/{itemId}/receipt',    [PurchaseOrderController::class, 'receiptFile']);
+            Route::delete('orders/{id}/items/{itemId}/receipt', [PurchaseOrderController::class, 'deleteReceipt']);
         });
 
         // Ürün kataloğu (warehouse veya warehouse-control aktif olanlara açık)
