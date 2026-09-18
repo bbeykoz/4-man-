@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ClipboardCheck, Plus, Trash2, Search, X,
@@ -38,6 +38,7 @@ import { WhatIfPanel } from '@/components/warehouse/WhatIfPanel'
 import { KpiPanel } from '@/components/warehouse/KpiPanel'
 import { AbcXyzPanel } from '@/components/warehouse/AbcXyzPanel'
 import { ReportsPanel } from '@/components/warehouse/ReportsPanel'
+import { WAREHOUSE_TABS, useTabParam } from '@/components/warehouse/tabs'
 import { RECORD_TYPES, apiErrorMessage, useWarehouses, type DepartmentOption } from '@/components/warehouse/stock'
 import { DepartmentOptions } from '@/components/warehouse/DepartmentOptions'
 
@@ -53,22 +54,7 @@ const UNIT_OPTIONS = ['adet', 'kg', 'gram', 'litre', 'ml', 'kutu', 'palet', 'kol
 
 const TYPE_OPTIONS = RECORD_TYPES
 
-const TABS = [
-  { id: 'depolama',    label: 'Depolama',              icon: Layers },
-  { id: 'stok',        label: 'Stok Kontrolü',          icon: SlidersHorizontal },
-  { id: 'yukleme',     label: 'Yükleme – Boşaltma',     icon: ArrowLeftRight },
-  { id: 'stok-durumu', label: 'Stok Durumu',            icon: Boxes },
-  { id: 'stok-riski',  label: 'Stok Riski',             icon: ShieldAlert },
-  { id: 'satin-alma',  label: 'Satın Alma',             icon: ShoppingCart },
-  { id: 'skt-olu-stok', label: 'SKT & Ölü Stok',             icon: CalendarClock },
-  { id: 'depo-transfer', label: 'Depo Transferleri',             icon: Shuffle },
-  { id: 'anomaliler', label: 'Anomaliler',             icon: Siren },
-  { id: 'what-if', label: 'What-if Simülasyonu',             icon: FlaskConical },
-  { id: 'depo-kpi', label: 'Depo KPI',             icon: Gauge },
-  { id: 'abc-xyz', label: 'ABC / XYZ',             icon: Grid3x3 },
-  { id: 'raporlar', label: 'Raporlar',             icon: LineChartIcon },
-  { id: 'paketleme',   label: 'Paketleme & Etiketleme', icon: Package },
-]
+const TABS = WAREHOUSE_TABS
 
 function typeBadge(type: string) {
   const map: Record<string, { label: string; cls: string }> = {
@@ -1432,7 +1418,16 @@ function PackagingTabSection({ departments }: PackagingTabSectionProps) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function WarehouseControlPage() {
-  const [activeTab, setActiveTab] = useState('depolama')
+  // useTabParam useSearchParams kullanır; Next.js bunun için Suspense sınırı ister
+  return (
+    <Suspense fallback={null}>
+      <WarehouseControlPageContent />
+    </Suspense>
+  )
+}
+
+function WarehouseControlPageContent() {
+  const [activeTab, setActiveTab] = useTabParam('depolama', TABS.map(t => t.id))
   const [showProductCatalog, setShowProductCatalog] = useState(false)
   const [showWarehouses, setShowWarehouses] = useState(false)
 

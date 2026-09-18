@@ -1,12 +1,13 @@
 'use client'
 
+import { Suspense, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import {
   LayoutDashboard, Building2, Users, Shield, Boxes, Calculator, Megaphone,
   Warehouse, ClipboardCheck, Package, RotateCcw, Globe, Truck,
   Settings, Bell, FileText, ChevronLeft, ChevronRight, LogOut,
-  BarChart2, Ship, MessageSquare, Ticket, CalendarDays, X,
+  BarChart2, Ship, MessageSquare, Ticket, CalendarDays, X, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
@@ -17,6 +18,7 @@ import { ROLE_LEVELS, getModuleSlugForPath } from '@/lib/constants'
 import { useT } from '@/lib/i18n'
 import { useQuery } from '@tanstack/react-query'
 import { get } from '@/lib/api'
+import { SIDEBAR_SUB_TABS } from '@/components/warehouse/tabs'
 
 const iconMap: Record<string, React.ElementType> = {
   LayoutDashboard, Building2, Users, Shield, Boxes, Calculator, Megaphone,
@@ -30,6 +32,8 @@ interface NavItem {
   icon: string
   permission?: string
   badge?: number
+  /** Sayfa sekmeleri: kenar menüde açılır-kapanır alt başlık olarak listelenir */
+  children?: { id: string; label: string }[]
 }
 
 interface NavGroup {
@@ -37,7 +41,12 @@ interface NavGroup {
   items: NavItem[]
 }
 
-function getSidebarNav(roleLevel: number, t: (key: string) => string, unreadMessages = 0): NavGroup[] {
+function getSidebarNav(
+  roleLevel: number,
+  t: (key: string) => string,
+  unreadMessages = 0,
+  isPassive: (href: string) => boolean = () => false,
+): NavGroup[] {
   const nav: NavGroup[] = []
 
   if (roleLevel === ROLE_LEVELS.SUPER_ADMIN) {
@@ -68,22 +77,23 @@ function getSidebarNav(roleLevel: number, t: (key: string) => string, unreadMess
     })
   }
 
-  nav.push({
-    title: t('nav.group.departments'),
-    items: [
-      { label: t('nav.accountingManager'),  href: '/modules/accounting-manager', icon: 'BarChart2',     permission: 'accounting.records.view' },
-      { label: t('nav.shippingManager'),    href: '/modules/shipping-manager',   icon: 'Ship',          permission: 'shipping.records.view' },
-      { label: t('nav.returnsManager'),     href: '/modules/returns-manager',    icon: 'RotateCcw',     permission: 'returns.records.view' },
-      { label: t('nav.warehouseManager'),   href: '/modules/warehouse',          icon: 'Warehouse',     permission: 'warehouse.records.view' },
-      { label: t('nav.warehouseController'),href: '/modules/warehouse-control',  icon: 'ClipboardCheck',permission: 'warehouse_control.records.view' },
-      { label: t('nav.accounting'),         href: '/modules/accounting',         icon: 'Calculator',    permission: 'accounting.staff.view' },
-      { label: t('nav.marketing'),          href: '/modules/marketing',          icon: 'Megaphone',     permission: 'marketing.staff.view' },
-      { label: t('nav.packaging'),          href: '/modules/packaging',          icon: 'Package',       permission: 'packaging.staff.view' },
-      { label: t('nav.returns'),            href: '/modules/returns',            icon: 'RotateCcw',     permission: 'returns.staff.view' },
-      { label: t('nav.customs'),            href: '/modules/customs',            icon: 'Globe',         permission: 'customs.staff.view' },
-      { label: t('nav.shipping'),           href: '/modules/shipping',           icon: 'Truck',         permission: 'shipping.staff.view' },
-    ],
-  })
+  const departmentItems: NavItem[] = [
+    { label: t('nav.accountingManager'),  href: '/modules/accounting-manager', icon: 'BarChart2',     permission: 'accounting.records.view' },
+    { label: t('nav.shippingManager'),    href: '/modules/shipping-manager',   icon: 'Ship',          permission: 'shipping.records.view' },
+    { label: t('nav.returnsManager'),     href: '/modules/returns-manager',    icon: 'RotateCcw',     permission: 'returns.records.view' },
+    { label: t('nav.warehouseManager'),   href: '/modules/warehouse',          icon: 'Warehouse',     permission: 'warehouse.records.view' },
+    { label: t('nav.warehouseController'),href: '/modules/warehouse-control',  icon: 'ClipboardCheck',permission: 'warehouse_control.records.view' },
+    { label: t('nav.accounting'),         href: '/modules/accounting',         icon: 'Calculator',    permission: 'accounting.staff.view' },
+    { label: t('nav.marketing'),          href: '/modules/marketing',          icon: 'Megaphone',     permission: 'marketing.staff.view' },
+    { label: t('nav.packaging'),          href: '/modules/packaging',          icon: 'Package',       permission: 'packaging.staff.view' },
+    { label: t('nav.returns'),            href: '/modules/returns',            icon: 'RotateCcw',     permission: 'returns.staff.view' },
+    { label: t('nav.customs'),            href: '/modules/customs',            icon: 'Globe',         permission: 'customs.staff.view' },
+    { label: t('nav.shipping'),           href: '/modules/shipping',           icon: 'Truck',         permission: 'shipping.staff.view' },
+  ].map(item => ({ ...item, children: SIDEBAR_SUB_TABS[item.href] }))
+
+  // Pasif departmanlar ayrı grupta; aktifler "Departmanlar" altında kalır
+  nav.push({ title: t('nav.group.departments'), items: departmentItems.filter(i => !isPassive(i.href)) })
+  nav.push({ title: t('nav.group.passiveDepartments'), items: departmentItems.filter(i => isPassive(i.href)) })
 
   nav.push({
     title: t('nav.group.other'),
@@ -102,12 +112,50 @@ function getSidebarNav(roleLevel: number, t: (key: string) => string, unreadMess
   return nav
 }
 
+/** Sayfa sekmelerinin alt başlık listesi. Aktif sekme ?tab= değerinden okunur (Suspense içinde render edilir). */
+function SubItems({ base, items, mobile, onNavigate }: {
+  base: string
+  items: { id: string; label: string }[]
+  mobile?: boolean
+  onNavigate?: () => void
+}) {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const current = pathname === base ? (searchParams.get('tab') ?? items[0]?.id) : null
+
+  return (
+    <div className="ml-5 mt-0.5 pl-2 border-l border-zinc-200 dark:border-zinc-800 space-y-0.5">
+      {items.map((sub, i) => {
+        const active = current === sub.id
+        return (
+          <Link
+            key={sub.id}
+            href={i === 0 ? base : `${base}?tab=${sub.id}`}
+            onClick={onNavigate}
+            className={cn(
+              'block px-3 rounded-md text-[13px] truncate transition-colors',
+              mobile ? 'py-2' : 'py-1.5',
+              active
+                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400 font-medium'
+                : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-100',
+            )}
+          >
+            {sub.label}
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
+
 export function Sidebar() {
   const pathname    = usePathname()
   const { roleLevel, hasPermission, isCompanyOwner } = useAuthStore()
   const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUiStore()
   const { user, logout, isAuthenticated } = useAuth()
   const t = useT()
+  // Alt başlıklı öğelerin açık/kapalı durumu; seçilmemişse bulunulan sayfanınki açık gelir
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const { data: unreadData } = useQuery({
     queryKey: ['messages', 'unread-count'],
@@ -117,22 +165,121 @@ export function Sidebar() {
   })
   const unreadMessages = unreadData?.data?.count ?? 0
 
-  const navGroups   = getSidebarNav(roleLevel, t, unreadMessages)
   const fullAccess  = isCompanyOwner()
   const superAdmin  = roleLevel === ROLE_LEVELS.SUPER_ADMIN
   const { isPassive } = useModuleStatus()
-
-  // Pasif departman: şirket kullanıcıları için tıklanamaz, süper admin için sadece etiketli
-  const passiveState = (href: string) => {
-    const passive = isPassive(getModuleSlugForPath(href))
-    return { passive, blocked: passive && !superAdmin }
-  }
+  const isPassivePath = (href: string) => isPassive(getModuleSlugForPath(href))
+  const navGroups   = getSidebarNav(roleLevel, t, unreadMessages, isPassivePath)
 
   const passiveBadge = (
     <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-zinc-200 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500">
       Pasif
     </span>
   )
+
+  const renderItem = (item: NavItem, mobile: boolean) => {
+    const collapsed = !mobile && sidebarCollapsed
+    const Icon      = iconMap[item.icon] ?? LayoutDashboard
+    const isActive  = pathname === item.href || pathname.startsWith(item.href + '/')
+    const passive   = isPassivePath(item.href)
+    const hasSub    = !!item.children?.length && !collapsed
+    const open      = hasSub && (expanded[item.href] ?? isActive)
+
+    // Pasif departman: şirket kullanıcıları için tıklanamaz, süper admin için sadece etiketli
+    if (passive && !superAdmin) {
+      return (
+        <div
+          key={item.href}
+          title={`${item.label} — departman pasif`}
+          aria-disabled="true"
+          className={cn(
+            'flex items-center gap-3 px-3 rounded-lg text-sm cursor-not-allowed text-zinc-400 dark:text-zinc-600',
+            mobile ? 'py-2.5' : 'py-2',
+            collapsed && 'justify-center px-2',
+          )}
+        >
+          <Icon className="h-4 w-4 flex-shrink-0" />
+          {!collapsed && <span className="truncate flex-1 line-through">{item.label}</span>}
+          {!collapsed && passiveBadge}
+        </div>
+      )
+    }
+
+    return (
+      <div key={item.href}>
+        <Link
+          href={item.href}
+          title={collapsed ? item.label : undefined}
+          aria-expanded={hasSub ? open : undefined}
+          onClick={(e) => {
+            if (hasSub) {
+              // Sayfadayken tıklama sadece alt başlıkları açar/kapatır, sekmeyi sıfırlamaz
+              if (isActive) e.preventDefault()
+              setExpanded(prev => ({ ...prev, [item.href]: isActive ? !open : true }))
+              if (isActive) return
+            }
+            if (mobile) setMobileSidebarOpen(false)
+          }}
+          className={cn(
+            'flex items-center gap-3 px-3 rounded-lg text-sm transition-all',
+            mobile ? 'py-2.5' : 'py-2',
+            isActive
+              ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400 font-medium'
+              : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-100',
+            passive && !isActive && 'opacity-60',
+            collapsed && 'justify-center px-2',
+          )}
+        >
+          <span className="relative flex-shrink-0">
+            <Icon className={cn('h-4 w-4', isActive && 'text-blue-600 dark:text-blue-400')} />
+            {!!item.badge && collapsed && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+                {item.badge > 99 ? '99+' : item.badge}
+              </span>
+            )}
+          </span>
+          {!collapsed && <span className="truncate flex-1">{item.label}</span>}
+          {!collapsed && passive && passiveBadge}
+          {!collapsed && !!item.badge && (
+            <span className="ml-auto min-w-[20px] h-5 px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+              {item.badge > 99 ? '99+' : item.badge}
+            </span>
+          )}
+          {hasSub && <ChevronDown className={cn('h-3.5 w-3.5 flex-shrink-0 transition-transform', open && 'rotate-180')} />}
+        </Link>
+        {open && (
+          <Suspense fallback={null}>
+            <SubItems
+              base={item.href}
+              items={item.children!}
+              mobile={mobile}
+              onNavigate={mobile ? () => setMobileSidebarOpen(false) : undefined}
+            />
+          </Suspense>
+        )}
+      </div>
+    )
+  }
+
+  const renderGroups = (mobile: boolean) => navGroups.map((group) => {
+    const visibleItems = group.items.filter(item =>
+      !item.permission || fullAccess || hasPermission(item.permission)
+    )
+    if (visibleItems.length === 0) return null
+
+    return (
+      <div key={group.title}>
+        {(mobile || !sidebarCollapsed) && (
+          <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-600">
+            {group.title}
+          </p>
+        )}
+        <div className="space-y-0.5">
+          {visibleItems.map(item => renderItem(item, mobile))}
+        </div>
+      </div>
+    )
+  })
 
   const sidebarContent = (
     <aside
@@ -163,81 +310,8 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-4">
-        {navGroups.map((group) => {
-          const visibleItems = group.items.filter(item =>
-            !item.permission || fullAccess || hasPermission(item.permission)
-          )
-          if (visibleItems.length === 0) return null
-
-          return (
-            <div key={group.title}>
-              {!sidebarCollapsed && (
-                <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-600">
-                  {group.title}
-                </p>
-              )}
-              <div className="space-y-0.5">
-                {visibleItems.map((item) => {
-                  const Icon     = iconMap[item.icon] ?? LayoutDashboard
-                  const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-                  const { passive, blocked } = passiveState(item.href)
-
-                  if (blocked) {
-                    return (
-                      <div
-                        key={item.href}
-                        title={`${item.label} — departman pasif`}
-                        aria-disabled="true"
-                        className={cn(
-                          'flex items-center gap-3 px-3 py-2 rounded-lg text-sm cursor-not-allowed text-zinc-400 dark:text-zinc-600',
-                          sidebarCollapsed && 'justify-center px-2'
-                        )}
-                      >
-                        <Icon className="h-4 w-4 flex-shrink-0" />
-                        {!sidebarCollapsed && <span className="truncate flex-1 line-through">{item.label}</span>}
-                        {!sidebarCollapsed && passiveBadge}
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      title={sidebarCollapsed ? item.label : undefined}
-                      className={cn(
-                        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
-                        isActive
-                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400 font-medium'
-                          : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-100',
-                        passive && !isActive && 'opacity-60',
-                        sidebarCollapsed && 'justify-center px-2'
-                      )}
-                    >
-                      <span className="relative flex-shrink-0">
-                        <Icon className={cn('h-4 w-4', isActive && 'text-blue-600 dark:text-blue-400')} />
-                        {!!item.badge && sidebarCollapsed && (
-                          <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
-                            {item.badge > 99 ? '99+' : item.badge}
-                          </span>
-                        )}
-                      </span>
-                      {!sidebarCollapsed && <span className="truncate flex-1">{item.label}</span>}
-                      {!sidebarCollapsed && passive && passiveBadge}
-                      {!sidebarCollapsed && !!item.badge && (
-                        <span className="ml-auto min-w-[20px] h-5 px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
-                          {item.badge > 99 ? '99+' : item.badge}
-                        </span>
-                      )}
-                    </Link>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
+        {renderGroups(false)}
       </nav>
-
       {/* Footer */}
       <div className="border-t border-zinc-200 dark:border-zinc-800 p-3">
         {!sidebarCollapsed && user && (
@@ -308,65 +382,7 @@ export function Sidebar() {
 
         {/* Mobile nav */}
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-4">
-          {navGroups.map((group) => {
-            const visibleItems = group.items.filter(item =>
-              !item.permission || fullAccess || hasPermission(item.permission)
-            )
-            if (visibleItems.length === 0) return null
-
-            return (
-              <div key={group.title}>
-                <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-600">
-                  {group.title}
-                </p>
-                <div className="space-y-0.5">
-                  {visibleItems.map((item) => {
-                    const Icon     = iconMap[item.icon] ?? LayoutDashboard
-                    const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-                    const { passive, blocked } = passiveState(item.href)
-
-                    if (blocked) {
-                      return (
-                        <div
-                          key={item.href}
-                          aria-disabled="true"
-                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm cursor-not-allowed text-zinc-400 dark:text-zinc-600"
-                        >
-                          <Icon className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate flex-1 line-through">{item.label}</span>
-                          {passiveBadge}
-                        </div>
-                      )
-                    }
-
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() => setMobileSidebarOpen(false)}
-                        className={cn(
-                          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all',
-                          isActive
-                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400 font-medium'
-                            : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50',
-                          passive && !isActive && 'opacity-60'
-                        )}
-                      >
-                        <Icon className={cn('h-4 w-4 flex-shrink-0', isActive && 'text-blue-600 dark:text-blue-400')} />
-                        <span className="truncate flex-1">{item.label}</span>
-                        {passive && passiveBadge}
-                        {!!item.badge && (
-                          <span className="ml-auto min-w-[20px] h-5 px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">
-                            {item.badge > 99 ? '99+' : item.badge}
-                          </span>
-                        )}
-                      </Link>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
+          {renderGroups(true)}
         </nav>
 
         {/* Mobile footer */}
