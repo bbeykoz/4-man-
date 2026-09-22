@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { get, post } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { apiErrorMessage, formatQty } from './stock'
+import { AsyncActionButton } from '@/components/common/AsyncActionButton'
 import { formatMoney } from './purchasing/api'
 
 interface TransferSuggestion {
@@ -106,14 +107,12 @@ export function TransferPanel() {
           Her depo için hedef stok = depo tüketimi × (tedarik + gözden geçirme süresi) + güvenlik stoğu payı.
           Açığı olan depo, kendi hedefinin üstünde stoğu olan depodan karşılanır. Onay bekleyen transferler hesaba katılır.
         </p>
-        <button
-          onClick={() => createMutation.mutate()}
-          disabled={chosen.length === 0 || createMutation.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 whitespace-nowrap"
-        >
-          <Shuffle className="h-4 w-4" />
-          {createMutation.isPending ? 'Oluşturuluyor...' : `Transfer Emri Oluştur (${chosen.length})`}
-        </button>
+        <AsyncActionButton
+          label={`Transfer emri oluştur (${chosen.length})`}
+          width={230}
+          disabled={chosen.length === 0}
+          onAction={() => createMutation.mutateAsync()}
+        />
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">

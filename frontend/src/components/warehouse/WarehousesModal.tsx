@@ -6,8 +6,9 @@ import { Building2, Loader2, Pencil, Plus, Star, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { del, post, put } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { ConfirmModal } from '@/components/common/ConfirmModal'
 import { apiErrorMessage, formatQty, useWarehouses, type Warehouse } from './stock'
+import { WarehouseMap } from './WarehouseMap'
+import { UndoButton } from '@/components/common/UndoButton'
 
 const inputCls = 'w-full px-3 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500'
 const labelCls = 'block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1'
@@ -19,7 +20,6 @@ export function WarehousesModal({ onClose }: { onClose: () => void }) {
   const { data: warehouses = [], isLoading } = useWarehouses()
   const [editing, setEditing] = useState<Warehouse | 'new' | null>(null)
   const [form, setForm] = useState(emptyForm)
-  const [deleteTarget, setDeleteTarget] = useState<Warehouse | null>(null)
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['stock-warehouses'] })
@@ -48,8 +48,8 @@ export function WarehousesModal({ onClose }: { onClose: () => void }) {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => del(`/modules/stock/warehouses/${id}`),
-    onSuccess: () => { toast.success('Depo silindi.'); refresh(); setDeleteTarget(null) },
-    onError: (e) => { toast.error(apiErrorMessage(e, 'Silinemedi.')); setDeleteTarget(null) },
+    onSuccess: () => { toast.success('Depo silindi.'); refresh() },
+    onError: (e) => toast.error(apiErrorMessage(e, 'Silinemedi.')),
   })
 
   const openForm = (w: Warehouse | 'new') => {
@@ -133,7 +133,7 @@ export function WarehousesModal({ onClose }: { onClose: () => void }) {
           ) : (
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {warehouses.map(w => (
-                <div key={w.id} className={cn('flex items-center gap-3 px-5 py-3', !w.is_active && 'opacity-60')}>
+                <div key={w.id} className={cn('flex flex-wrap items-center gap-3 px-5 py-3', !w.is_active && 'opacity-60')}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{w.name}</p>
@@ -149,6 +149,11 @@ export function WarehousesModal({ onClose }: { onClose: () => void }) {
                       {w.damaged > 0 && <span className="text-red-500">Hasarlı: {formatQty(w.damaged)}</span>}
                       {w.fill_rate != null && <span>Doluluk: %{w.fill_rate}</span>}
                     </div>
+                    {(w.address || w.city) && (
+                      <div className="mt-2">
+                        <WarehouseMap query={[w.address, w.city].filter(Boolean).join(' ')} />
+                      </div>
+                    )}
                   </div>
                   {!w.is_default && w.is_active && (
                     <button title="Varsayılan yap" onClick={() => patchMutation.mutate({ id: w.id, payload: { is_default: true } })}
@@ -169,9 +174,14 @@ export function WarehousesModal({ onClose }: { onClose: () => void }) {
                     <Pencil className="h-4 w-4" />
                   </button>
                   {!w.is_default && (
-                    <button title="Sil" onClick={() => setDeleteTarget(w)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-zinc-400 hover:text-red-600">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <UndoButton
+                      label="Sil"
+                      undoLabel="Vazgeç"
+                      seconds={5}
+                      icon={<Trash2 className="h-3.5 w-3.5 text-white" />}
+                      onConfirm={() => deleteMutation.mutate(w.id)}
+                      className="shrink-0"
+                    />
                   )}
                 </div>
               ))}
@@ -184,15 +194,7 @@ export function WarehousesModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <ConfirmModal
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
-        title={`${deleteTarget?.name ?? ''} silinsin mi?`}
-        description="Sadece stoğu olmayan depolar silinebilir. Stoğu varsa önce transfer edin veya pasife alın."
-        confirmLabel="Sil"
-        loading={deleteMutation.isPending}
-      />
+
     </div>
   )
 }

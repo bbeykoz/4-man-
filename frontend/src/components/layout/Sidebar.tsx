@@ -69,6 +69,7 @@ function getSidebarNav(
       title: t('nav.group.company'),
       items: [
         { label: t('nav.dashboard'),   href: '/company/dashboard',   icon: 'LayoutDashboard' },
+        { label: t('nav.analytics'),   href: '/company/analytics',   icon: 'BarChart2', permission: 'warehouse.records.view' },
         { label: t('nav.users'),       href: '/company/users',       icon: 'Users',    permission: 'company.users.view' },
         { label: t('nav.departments'), href: '/company/departments', icon: 'Building2', permission: 'company.departments.view' },
         { label: t('nav.roles'),       href: '/company/roles',       icon: 'Shield',   permission: 'company.roles.view' },

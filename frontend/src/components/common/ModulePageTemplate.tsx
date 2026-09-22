@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Eye, Pencil, Trash2, X, Paperclip, Upload, FileText, FileImage, File, Download, Loader2 } from 'lucide-react'
+import { RowMenu } from '@/components/common/RowMenu'
 import { createColumnHelper } from '@tanstack/react-table'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -348,16 +349,20 @@ export function ModulePageTemplate({
                 </span>
               )}
             </button>
-            <button title="Detay" className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-blue-600 transition-colors">
-              <Eye className="h-4 w-4" />
-            </button>
-            <button title="Düzenle" className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-blue-600 transition-colors">
-              <Pencil className="h-4 w-4" />
-            </button>
-            <button title="Sil" onClick={() => setDeleteId(row.id)}
-              className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/50 text-zinc-400 hover:text-red-600 transition-colors">
-              <Trash2 className="h-4 w-4" />
-            </button>
+            {/* Satır menüsü: watermelon "inline disclosure" — Sil seçilince aynı şerit onaya dönüşür */}
+            <RowMenu
+              items={[
+                { icon: <Eye className="h-4 w-4" />, label: 'Detay' },
+                { icon: <Pencil className="h-4 w-4" />, label: 'Düzenle' },
+                {
+                  icon: <Paperclip className="h-4 w-4" />,
+                  label: attachCount > 0 ? `Dosyalar (${attachCount})` : 'Dosya ekle',
+                  onClick: () => setAttachmentRecord({ id: row.id, title: row.title }),
+                },
+              ]}
+              deleteIcon={<Trash2 className="h-4 w-4" />}
+              onDelete={() => setDeleteId(row.id)}
+            />
           </div>
         )
       },

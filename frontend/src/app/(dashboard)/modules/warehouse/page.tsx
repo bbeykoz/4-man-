@@ -22,6 +22,7 @@ import type { WarehouseRecord, WarehouseProduct } from '@/types/api.types'
 import { createColumnHelper } from '@tanstack/react-table'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { QcBadge, QcDetailModal, QualityCheckPrompt, createRecordWithQualityCheck } from '@/components/warehouse/QualityCheck'
+import { SignatureCell } from '@/components/warehouse/SignaturePad'
 import { WarehouseFields } from '@/components/warehouse/WarehouseFields'
 import { WarehousesModal } from '@/components/warehouse/WarehousesModal'
 import { StockOverview } from '@/components/warehouse/StockOverview'
@@ -1186,6 +1187,11 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
       id: 'quality_check',
       header: 'Kalite Kontrol',
       cell: info => <QcBadge record={info.row.original} onClick={() => setQcRecord(info.row.original)} />,
+    }),
+    col.display({
+      id: 'signature',
+      header: 'Teslim İmzası',
+      cell: info => <SignatureCell record={info.row.original} modulePath="warehouse" />,
     }),
     col.accessor('quantity', {
       header: 'Miktar',

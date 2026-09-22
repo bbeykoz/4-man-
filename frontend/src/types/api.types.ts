@@ -114,6 +114,10 @@ export interface WarehouseRecord extends BaseRecord {
   qc_has_photo?: boolean
   qc_checked_at?: string | null
   qc_checked_by_name?: string | null
+  has_signature?: boolean
+  signed_by_name?: string | null
+  signed_at?: string | null
+  signed_by_user?: string | null
   // Stok defteri
   warehouse_id?: string | null
   warehouse_name?: string | null

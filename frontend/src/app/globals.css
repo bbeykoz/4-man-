@@ -7,9 +7,131 @@
   --foreground: #171717;
 }
 
+/* shadcn bileşenlerinin (card, button, badge) renk değişkenleri — zinc tabanlı.
+   Panelin kendi sınıfları (bg-zinc-900 vb.) bunlardan etkilenmez, sadece yeni sınıflar eklenir. */
+:root {
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #2563eb;
+}
+
+:where(.dark, .dark *) {
+  --card: #18181b;
+  --card-foreground: #fafafa;
+  --popover: #18181b;
+  --popover-foreground: #fafafa;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #3f3f46;
+  --input: #3f3f46;
+  --ring: #3b82f6;
+}
+
+/* capitalio dashboard şablonunun grafik renkleri ve yardımcı sınıfları */
+:root {
+  --chart-1: #2563eb;
+  --chart-2: #7c3aed;
+  --chart-3: #eab308;
+  --chart-4: #16a34a;
+  --chart-5: #ea580c;
+}
+
+:where(.dark, .dark *) {
+  --chart-1: #3b82f6;
+  --chart-2: #a78bfa;
+  --chart-3: #facc15;
+  --chart-4: #22c55e;
+  --chart-5: #fb923c;
+}
+
+.shadow-custom {
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.04),
+    0 1px 2px -1px rgb(0 0 0 / 0.08),
+    0 2px 4px 0 rgb(0 0 0 / 0.04);
+}
+
+:where(.dark) .shadow-custom {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.06),
+    0 1px 2px -1px rgb(0 0 0 / 0.5),
+    0 2px 4px 0 rgb(0 0 0 / 0.4);
+}
+
+/* Grafik zeminindeki nokta deseni */
+.dashboard-dot-grid {
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--foreground) 12%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 16px 16px;
+}
+
+.dashboard-icon-badge {
+  background: linear-gradient(
+    to top,
+    color-mix(in oklab, var(--primary) 80%, black),
+    var(--primary)
+  );
+}
+
+.dashboard-progress-fill {
+  animation: dashboard-progress 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes dashboard-progress {
+  from {
+    width: 0;
+  }
+}
+
 @theme inline {
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

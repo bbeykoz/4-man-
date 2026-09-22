@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { motion } from 'motion/react'
+import { StepPanel, StepDots } from '@/components/common/StepPanel'
+import { SignaturePad } from './SignaturePad'
 import { Camera, CheckCircle2, Clock, ImagePlus, Loader2, ShieldCheck, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, post } from '@/lib/api'
@@ -142,18 +145,26 @@ export function QualityCheckPrompt({ submitting, onBack, onSubmit }: QualityChec
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-md max-h-[92vh] overflow-y-auto">
+      <motion.div
+        initial={{ opacity: 0, y: 60, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: 'spring', bounce: 0, duration: 0.45 }}
+        className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-md max-h-[92vh] overflow-y-auto"
+      >
         <div className="flex items-center gap-3 p-5 border-b border-zinc-200 dark:border-zinc-800">
           <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center shrink-0">
             <ShieldCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
           </div>
-          <div>
+          <div className="flex-1">
             <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Kalite Kontrol</h2>
             <p className="text-xs text-zinc-500">Kaydı eklemeden önce kalite kontrol durumunu belirtin.</p>
           </div>
+          {/* İki adımlı akış: form → kalite kontrol */}
+          <StepDots total={2} current={1} />
         </div>
 
-        <div className="p-5 space-y-4">
+        <StepPanel step={answer ?? 'none'} className="p-5">
+          <div className="space-y-4">
           <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Kalite kontrol yapıldı mı?</p>
           <div className="flex gap-3">
             <button type="button" className={choiceCls(answer === 'yes', 'green')} onClick={() => setAnswer('yes')}>
@@ -179,7 +190,8 @@ export function QualityCheckPrompt({ submitting, onBack, onSubmit }: QualityChec
               rozete tıklayarak görsel yükleyip onaylayabilirsiniz.
             </p>
           )}
-        </div>
+          </div>
+        </StepPanel>
 
         <div className="flex justify-end gap-3 px-5 pb-5">
           <button
@@ -199,7 +211,7 @@ export function QualityCheckPrompt({ submitting, onBack, onSubmit }: QualityChec
             {submitting ? 'Kaydediliyor...' : answer === 'no' ? 'QC Bekliyor Olarak Kaydet' : 'Onayla ve Kaydet'}
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   )
 }
@@ -325,6 +337,18 @@ export function QcDetailModal({ record, modulePath, onClose, onApproved }: QcDet
               <PhotoPicker photo={photo} onChange={setPhoto} />
             </>
           )}
+
+          {/* Teslim imzası: kaydı teslim alan kişi ekranda imzalar */}
+          <div className="border-t border-zinc-200 dark:border-zinc-800 pt-4">
+            <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">Teslim imzası</p>
+            <SignaturePad
+              recordId={record.id}
+              modulePath={modulePath.includes('control') ? 'warehouse-control' : 'warehouse'}
+              hasSignature={record.has_signature}
+              signedByName={record.signed_by_name}
+              signedAt={record.signed_at}
+            />
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 px-5 pb-5">

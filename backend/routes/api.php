@@ -224,6 +224,8 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
         $qualityCheckRoutes = function () {
             Route::post('{id}/quality-check',      [WarehouseController::class, 'qualityCheck']);
             Route::get('{id}/quality-check/photo', [WarehouseController::class, 'qualityCheckPhoto']);
+            Route::post('{id}/signature',          [WarehouseController::class, 'storeSignature']);
+            Route::get('{id}/signature',           [WarehouseController::class, 'signature']);
         };
 
         Route::prefix('warehouse')->middleware('module.enabled:warehouse')->group(function () use ($moduleRoutes, $qualityCheckRoutes) {

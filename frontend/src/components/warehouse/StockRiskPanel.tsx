@@ -4,6 +4,7 @@ import { Fragment, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Loader2, Search, Settings2, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { SaveButton } from '@/components/common/SaveButton'
 import { get, put } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { apiErrorMessage, formatQty, useWarehouses } from './stock'
@@ -271,9 +272,7 @@ function ProductParamsModal({ row, onClose }: { row: RiskRow; onClose: () => voi
         </div>
         <div className="flex justify-end gap-3 px-5 pb-5">
           <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300">İptal</button>
-          <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60">
-            {saveMutation.isPending ? 'Kaydediliyor...' : 'Kaydet'}
-          </button>
+          <SaveButton size="sm" onSave={() => saveMutation.mutateAsync()} idleText="Kaydet" savedText="Kaydedildi" />
         </div>
       </div>
     </div>

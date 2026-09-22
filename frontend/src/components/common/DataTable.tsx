@@ -10,6 +10,7 @@ import {
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { cn, formatNumber } from '@/lib/utils'
+import { motion } from 'motion/react'
 
 interface DataTableProps<TData> {
   columns: ColumnDef<TData, any>[]
@@ -100,9 +101,13 @@ export function DataTable<TData>({
                   </td>
                 </tr>
               ) : (
-                table.getRowModel().rows.map((row) => (
-                  <tr
+                /* Animasyon: watermelon trade summary — satırlar sırayla belirir */
+                table.getRowModel().rows.map((row, index) => (
+                  <motion.tr
                     key={row.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.22, delay: Math.min(index, 12) * 0.02, ease: 'easeOut' }}
                     className="hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors"
                   >
                     {row.getVisibleCells().map((cell) => (
@@ -110,7 +115,7 @@ export function DataTable<TData>({
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}
-                  </tr>
+                  </motion.tr>
                 ))
               )}
             </tbody>

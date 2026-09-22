@@ -68,6 +68,11 @@ class RecordResource extends JsonResource
             'qc_has_photo'       => !empty($this->qc_photo_path),
             'qc_checked_at'      => $this->qc_checked_at?->toISOString(),
             'qc_checked_by_name' => $this->relationLoaded('qcCheckedBy') ? $this->qcCheckedBy?->name : null,
+            // Teslim imzası (görselin kendisi ayrı uçtan çekilir)
+            'has_signature'      => !empty($this->signature_path),
+            'signed_by_name'     => $this->signed_by_name,
+            'signed_at'          => $this->signed_at?->toISOString(),
+            'signed_by_user'     => $this->relationLoaded('signedBy') ? $this->signedBy?->name : null,
         ];
     }
 

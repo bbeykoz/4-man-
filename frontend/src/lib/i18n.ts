@@ -9,6 +9,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.group.company': 'ŞİRKET',
     'nav.group.departments': 'DEPARTMANLAR',
     'nav.group.passiveDepartments': 'PASİF DEPARTMANLAR',
+    'nav.analytics': 'Analiz',
     'nav.group.other': 'DİĞER',
     // Nav items
     'nav.dashboard': 'Dashboard',
@@ -74,6 +75,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.group.company': 'COMPANY',
     'nav.group.departments': 'DEPARTMENTS',
     'nav.group.passiveDepartments': 'PASSIVE DEPARTMENTS',
+    'nav.analytics': 'Analytics',
     'nav.group.other': 'OTHER',
     'nav.dashboard': 'Dashboard',
     'nav.companies': 'Companies',
@@ -136,6 +138,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.group.company': 'КОМПАНИЯ',
     'nav.group.departments': 'ОТДЕЛИ',
     'nav.group.passiveDepartments': 'НЕАКТИВНИ ОТДЕЛИ',
+    'nav.analytics': 'Анализ',
     'nav.group.other': 'ДРУГО',
     'nav.dashboard': 'Табло',
     'nav.companies': 'Компании',

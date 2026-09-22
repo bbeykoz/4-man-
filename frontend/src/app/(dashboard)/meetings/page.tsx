@@ -9,6 +9,7 @@ import {
   Trash2, CalendarDays, AlarmClock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { motion } from 'motion/react'
 import { useAuthStore } from '@/store/auth.store'
 
 interface Participant { id: string; name: string; avatar_url: string }
@@ -178,34 +179,51 @@ export default function MeetingsPage() {
             </div>
 
             {/* Calendar cells */}
-            <div className="grid grid-cols-7 gap-y-1">
+            <motion.div
+              key={`${viewDate.getFullYear()}-${viewDate.getMonth()}`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 26 }}
+              className="grid grid-cols-7 gap-y-1"
+            >
               {calDays.map((day, i) => {
                 if (!day) return <div key={`e-${i}`} />
                 const isToday    = isSameDay(day, today)
                 const isSel      = isSameDay(day, selected)
                 const hasMeeting = !!meetingsByDay[toDateKey(day)]?.length
                 return (
-                  <button
+                  /* Animasyon: watermelon takvim — seçili gün halkası layoutId ile kayar */
+                  <motion.button
                     key={day.toISOString()}
+                    layout
+                    whileTap={{ scale: 0.92 }}
+                    transition={{ type: 'spring', stiffness: 420, damping: 28, mass: 0.6 }}
                     onClick={() => setSelected(day)}
                     className={cn(
-                      'relative flex flex-col items-center justify-center h-8 w-8 mx-auto rounded-full text-sm transition-all',
-                      isSel   ? 'bg-blue-600 text-white font-bold' :
+                      'relative flex flex-col items-center justify-center h-8 w-8 mx-auto rounded-full text-sm',
+                      isSel   ? 'text-white font-bold' :
                       isToday ? 'text-blue-600 dark:text-blue-400 font-bold' :
                                 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                     )}
                   >
-                    {day.getDate()}
+                    {isSel && (
+                      <motion.span
+                        layoutId="selected-day"
+                        transition={{ type: 'spring', stiffness: 420, damping: 28, mass: 0.6 }}
+                        className="absolute inset-0 rounded-full bg-blue-600"
+                      />
+                    )}
+                    <span className="relative z-10">{day.getDate()}</span>
                     {hasMeeting && (
                       <span className={cn(
-                        'absolute bottom-0.5 w-1 h-1 rounded-full',
+                        'absolute bottom-0.5 z-10 w-1 h-1 rounded-full',
                         isSel ? 'bg-white' : 'bg-blue-500'
                       )} />
                     )}
-                  </button>
+                  </motion.button>
                 )
               })}
-            </div>
+            </motion.div>
           </div>
 
           {/* Divider */}

@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Loader2, RefreshCw, RotateCcw, Siren, XCircle } from 'lucide-react'
+import { Loader2, RefreshCw, RotateCcw, Siren, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { get, patch, post } from '@/lib/api'
 import { cn, formatDate, formatDateTime } from '@/lib/utils'
 import { apiErrorMessage } from './stock'
+import { AsyncActionButton } from '@/components/common/AsyncActionButton'
 
 type AnomalyStatus = 'open' | 'acknowledged' | 'dismissed'
 
@@ -157,9 +158,11 @@ export function AnomalyPanel() {
                       placeholder="Not (isteğe bağlı)"
                       className="w-44 px-2 py-1.5 text-xs rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
                     />
-                    <button onClick={() => reviewMutation.mutate({ id: a.id, status: 'dismissed' })} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-green-300 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950/30">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Normal
-                    </button>
+                    <AsyncActionButton
+                      label="Normal"
+                      width={96}
+                      onAction={() => reviewMutation.mutateAsync({ id: a.id, status: 'dismissed' })}
+                    />
                     <button onClick={() => reviewMutation.mutate({ id: a.id, status: 'acknowledged' })} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30">
                       <XCircle className="h-3.5 w-3.5" /> Sorun var
                     </button>

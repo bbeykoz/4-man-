@@ -26,6 +26,9 @@ class WarehouseRecord extends Model
     /** Sadece kalite kontrol endpoint'i yazabilir; update() ile değiştirilemez. */
     public const QC_FIELDS = ['qc_status', 'qc_photo_path', 'qc_photo_disk', 'qc_checked_by', 'qc_checked_at'];
 
+    /** Sadece imza endpoint'i yazabilir. */
+    public const SIGNATURE_FIELDS = ['signature_path', 'signature_disk', 'signed_by_name', 'signed_by', 'signed_at'];
+
     public const TYPES = ['stock_in', 'stock_out', 'transfer', 'adjustment', 'inspection', 'stock_count', 'damage', 'return_in'];
 
     /** Stoğa işlenmiş kayıtta değiştirilemeyen alanlar. */
@@ -36,7 +39,7 @@ class WarehouseRecord extends Model
 
     protected $table = 'warehouse_records';
     protected $guarded = ['id'];
-    protected $with = ['qcCheckedBy:id,name', 'warehouse:id,name,code', 'toWarehouse:id,name,code'];
+    protected $with = ['qcCheckedBy:id,name', 'signedBy:id,name', 'warehouse:id,name,code', 'toWarehouse:id,name,code'];
 
     protected function casts(): array
     {
@@ -48,6 +51,7 @@ class WarehouseRecord extends Model
             'expiry_date'      => 'date',
             'meta'             => 'array',
             'qc_checked_at'    => 'datetime',
+            'signed_at'        => 'datetime',
             'system_quantity'  => 'float',
             'posted_at'        => 'datetime',
             'reversed_at'      => 'datetime',
@@ -81,6 +85,11 @@ class WarehouseRecord extends Model
     public function qcCheckedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'qc_checked_by');
+    }
+
+    public function signedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'signed_by');
     }
 
     public function warehouse(): BelongsTo

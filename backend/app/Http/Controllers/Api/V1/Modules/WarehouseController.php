@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -281,6 +282,97 @@ class WarehouseController extends BaseModuleController
         abort_unless($disk->exists($record->qc_photo_path), 404);
 
         return $disk->response($record->qc_photo_path, null, [
+            'Cache-Control' => 'private, max-age=3600',
+        ]);
+    }
+
+    /**
+     * Teslim imzası: kaydı teslim alan kişi ekranda imzalar, PNG olarak saklanır.
+     * İmza bir kez atılır; değiştirmek için önce silinmesi gerekir.
+     */
+    public function storeSignature(Request $request, string $id): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless(
+            $this->can($user, $this->createPermission) || $this->can($user, $this->editPermission),
+            403
+        );
+
+        if ($error = $this->companyRequired($request)) {
+            return $error;
+        }
+
+        $data = $request->validate([
+            'signature' => ['required', 'string', 'max:2000000'],
+            'name'      => ['required', 'string', 'max:120'],
+        ], [
+            'signature.required' => 'İmza boş olamaz.',
+            'name.required'      => 'Teslim alan kişinin adı zorunlu.',
+        ]);
+
+        $record = WarehouseRecord::where('company_id', $user->company_id)->findOrFail($id);
+
+        if ($record->signature_path) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bu kayıt zaten imzalanmış.',
+            ], 422);
+        }
+
+        // data:image/png;base64,... biçimi bekleniyor
+        if (!preg_match('#^data:image/png;base64,([A-Za-z0-9+/=]+)$#', $data['signature'], $m)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'İmza biçimi geçersiz.',
+            ], 422);
+        }
+
+        $binary = base64_decode($m[1], true);
+
+        if ($binary === false || strlen($binary) > 2 * 1024 * 1024) {
+            return response()->json([
+                'success' => false,
+                'message' => 'İmza okunamadı veya çok büyük.',
+            ], 422);
+        }
+
+        $path = sprintf('signatures/%s/%s.png', $user->company_id, Str::uuid());
+        Storage::disk(self::QC_DISK)->put($path, $binary);
+
+        try {
+            $record->update([
+                'signature_path' => $path,
+                'signature_disk' => self::QC_DISK,
+                'signed_by_name' => $data['name'],
+                'signed_by'      => $user->id,
+                'signed_at'      => now(),
+                'updated_by'     => $user->id,
+            ]);
+        } catch (\Throwable $e) {
+            Storage::disk(self::QC_DISK)->delete($path);
+            throw $e;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'İmza kaydedildi.',
+            'data'    => new RecordResource($record->fresh()),
+        ]);
+    }
+
+    /** İmza görselini döndürür. */
+    public function signature(Request $request, string $id): StreamedResponse
+    {
+        abort_unless($this->can($request->user(), $this->viewPermission), 403);
+
+        $record = WarehouseRecord::where('company_id', $request->user()->company_id)->findOrFail($id);
+
+        abort_unless($record->signature_path, 404);
+
+        $disk = Storage::disk($record->signature_disk ?? self::QC_DISK);
+        abort_unless($disk->exists($record->signature_path), 404);
+
+        return $disk->response($record->signature_path, null, [
             'Cache-Control' => 'private, max-age=3600',
         ]);
     }

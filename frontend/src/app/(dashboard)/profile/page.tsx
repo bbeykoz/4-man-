@@ -35,7 +35,7 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'sessions'>('profile')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const { register: profileReg, handleSubmit: handleProfile, formState: { errors: profileErrors, isDirty: profileDirty } } = useForm<ProfileData>({
+  const { register: profileReg, handleSubmit: handleProfile, watch: watchProfile, formState: { errors: profileErrors, isDirty: profileDirty } } = useForm<ProfileData>({
     resolver: zodResolver(profileSchema),
     values: { name: user?.name ?? '', email: user?.email ?? '', phone: '' },
   })
@@ -43,6 +43,9 @@ export default function ProfilePage() {
   const { register: passReg, handleSubmit: handlePass, reset: resetPass, formState: { errors: passErrors } } = useForm<PasswordData>({
     resolver: zodResolver(passwordSchema),
   })
+
+  // Önizleme kartı formu canlı izler
+  const preview = watchProfile()
 
   const profileMutation = useMutation({
     mutationFn: (d: ProfileData) => put('/profile', d),
@@ -153,40 +156,81 @@ export default function ProfilePage() {
 
             <div className="p-6">
               {activeTab === 'profile' && (
-                <form onSubmit={handleProfile((d) => profileMutation.mutate(d))} className="space-y-5 max-w-md">
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Ad Soyad</label>
-                    <input
-                      {...profileReg('name')}
-                      className="w-full px-4 py-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    {profileErrors.name && <p className="text-xs text-red-500 mt-1">{profileErrors.name.message}</p>}
+                /* Düzen: watermelon "edit profile" bloğu — solda form, sağda canlı önizleme.
+                   Yazdıkça sağdaki kart güncellenir; kaydetmeden nasıl görüneceği belli olur. */
+                <form
+                  onSubmit={handleProfile((d) => profileMutation.mutate(d))}
+                  className="flex flex-col gap-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 md:flex-row"
+                >
+                  <div className="flex-1 space-y-4 p-5">
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-medium text-zinc-500 dark:text-zinc-400">Ad Soyad</label>
+                      <input
+                        {...profileReg('name')}
+                        className="w-full rounded-xl border-[1.5px] border-zinc-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-zinc-900 outline-none transition-all focus:border-blue-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:focus:border-blue-500"
+                      />
+                      {profileErrors.name && <p className="text-xs text-red-500">{profileErrors.name.message}</p>}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-medium text-zinc-500 dark:text-zinc-400">E-posta</label>
+                      <input
+                        {...profileReg('email')}
+                        type="email"
+                        className="w-full rounded-xl border-[1.5px] border-zinc-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-zinc-900 outline-none transition-all focus:border-blue-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:focus:border-blue-500"
+                      />
+                      {profileErrors.email && <p className="text-xs text-red-500">{profileErrors.email.message}</p>}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-medium text-zinc-500 dark:text-zinc-400">Telefon</label>
+                      <input
+                        {...profileReg('phone')}
+                        className="w-full rounded-xl border-[1.5px] border-zinc-200 bg-white px-4 py-2.5 text-[15px] font-semibold text-zinc-900 outline-none transition-all focus:border-blue-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 pt-2">
+                      <span className="text-[13px] text-zinc-500">
+                        {user?.roles?.[0]?.name ? <>Rol: <span className="font-medium">{user.roles[0].name}</span></> : null}
+                      </span>
+                      <button
+                        type="submit"
+                        disabled={!profileDirty || profileMutation.isPending}
+                        className="flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {profileMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Kaydet
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">E-posta</label>
-                    <input
-                      {...profileReg('email')}
-                      type="email"
-                      className="w-full px-4 py-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    {profileErrors.email && <p className="text-xs text-red-500 mt-1">{profileErrors.email.message}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Telefon</label>
-                    <input
-                      {...profileReg('phone')}
-                      className="w-full px-4 py-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="flex justify-end">
-                    <button
-                      type="submit"
-                      disabled={!profileDirty || profileMutation.isPending}
-                      className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-                    >
-                      {profileMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Kaydet
-                    </button>
+
+                  <div className="w-full border-t border-dashed border-zinc-200 md:h-auto md:w-px md:border-l md:border-t-0 dark:border-zinc-700" />
+
+                  <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
+                    <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Önizleme</span>
+                    {user?.avatar_url ? (
+                      <img
+                        src={user.avatar_url}
+                        alt={preview.name || 'Profil'}
+                        className="h-28 w-28 rounded-full object-cover ring-1 ring-zinc-200 dark:ring-zinc-700"
+                      />
+                    ) : (
+                      <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 text-3xl font-bold text-white">
+                        {(preview.name || '?').charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <h3 className="text-center text-lg font-bold text-zinc-900 dark:text-zinc-100">
+                      {preview.name || 'Ad Soyad'}
+                    </h3>
+                    <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
+                      {preview.email || 'e-posta yok'}
+                    </p>
+                    {preview.phone && (
+                      <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                        {preview.phone}
+                      </span>
+                    )}
                   </div>
                 </form>
               )}
