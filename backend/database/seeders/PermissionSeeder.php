@@ -7,6 +7,27 @@ use Illuminate\Database\Seeder;
 
 class PermissionSeeder extends Seeder
 {
+    /** Platform (hizmeti veren taraf) izinleri: kendi ekibimizin panel yetkileri. */
+    private array $platformPermissions = [
+        ['name' => 'platform.companies.view',       'display_name' => 'Şirketleri Görüntüle',      'group' => 'platform', 'module' => 'platform', 'resource' => 'companies', 'action' => 'view'],
+        ['name' => 'platform.companies.create',     'display_name' => 'Şirket Oluştur',            'group' => 'platform', 'module' => 'platform', 'resource' => 'companies', 'action' => 'create'],
+        ['name' => 'platform.companies.edit',       'display_name' => 'Şirket Düzenle',            'group' => 'platform', 'module' => 'platform', 'resource' => 'companies', 'action' => 'edit'],
+        ['name' => 'platform.companies.suspend',    'display_name' => 'Şirket Askıya Al',          'group' => 'platform', 'module' => 'platform', 'resource' => 'companies', 'action' => 'suspend'],
+        ['name' => 'platform.companies.delete',     'display_name' => 'Şirket Sil',                'group' => 'platform', 'module' => 'platform', 'resource' => 'companies', 'action' => 'delete'],
+        ['name' => 'platform.companies.impersonate','display_name' => 'Şirkete Bağlan',            'group' => 'platform', 'module' => 'platform', 'resource' => 'companies', 'action' => 'impersonate'],
+        ['name' => 'platform.companies.messages',   'display_name' => 'Şirket Mesajlarını Oku',    'group' => 'platform', 'module' => 'platform', 'resource' => 'messages',  'action' => 'view'],
+        ['name' => 'platform.users.view',           'display_name' => 'Tüm Kullanıcıları Görüntüle','group' => 'platform', 'module' => 'platform', 'resource' => 'users',    'action' => 'view'],
+        ['name' => 'platform.users.manage',         'display_name' => 'Tüm Kullanıcıları Yönet',   'group' => 'platform', 'module' => 'platform', 'resource' => 'users',     'action' => 'manage'],
+        ['name' => 'platform.tickets.view',         'display_name' => 'Destek Taleplerini Görüntüle','group' => 'platform', 'module' => 'platform', 'resource' => 'tickets', 'action' => 'view'],
+        ['name' => 'platform.tickets.manage',       'display_name' => 'Destek Taleplerini Yönet',  'group' => 'platform', 'module' => 'platform', 'resource' => 'tickets',   'action' => 'manage'],
+        ['name' => 'platform.modules.manage',       'display_name' => 'Departmanları Yönet',       'group' => 'platform', 'module' => 'platform', 'resource' => 'modules',   'action' => 'manage'],
+        ['name' => 'platform.logs.view',            'display_name' => 'Sistem Kayıtlarını Görüntüle','group' => 'platform','module' => 'platform', 'resource' => 'logs',     'action' => 'view'],
+        ['name' => 'platform.team.view',            'display_name' => 'Ekibi Görüntüle',           'group' => 'platform', 'module' => 'platform', 'resource' => 'team',      'action' => 'view'],
+        ['name' => 'platform.team.manage',          'display_name' => 'Ekip Üyelerini Yönet',      'group' => 'platform', 'module' => 'platform', 'resource' => 'team',      'action' => 'manage'],
+        ['name' => 'platform.roles.manage',         'display_name' => 'Ekip Rollerini Yönet',      'group' => 'platform', 'module' => 'platform', 'resource' => 'roles',     'action' => 'manage'],
+        ['name' => 'platform.notifications.send',   'display_name' => 'Duyuru Gönder',             'group' => 'platform', 'module' => 'platform', 'resource' => 'notifications', 'action' => 'send'],
+    ];
+
     private array $systemPermissions = [
         // Super Admin
         ['name' => 'system.settings',    'display_name' => 'Sistem Ayarları',    'group' => 'system',  'module' => 'system',  'resource' => 'settings',  'action' => 'manage'],
@@ -40,6 +61,10 @@ class PermissionSeeder extends Seeder
     {
         // System permissions
         foreach ($this->systemPermissions as $perm) {
+            Permission::updateOrCreate(['name' => $perm['name']], $perm);
+        }
+
+        foreach ($this->platformPermissions as $perm) {
             Permission::updateOrCreate(['name' => $perm['name']], $perm);
         }
 

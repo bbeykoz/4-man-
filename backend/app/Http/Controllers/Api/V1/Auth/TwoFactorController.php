@@ -87,6 +87,8 @@ class TwoFactorController extends Controller
                 'user'        => new UserResource($result['user']),
                 'permissions' => $result['permissions'],
                 'role_level'  => $result['role_level'],
+                'is_super'    => $result['is_super'] ?? false,
+                'is_platform' => $result['is_platform'] ?? false,
             ],
         ]);
     }

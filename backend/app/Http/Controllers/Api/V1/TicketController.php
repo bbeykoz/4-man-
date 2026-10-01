@@ -39,8 +39,15 @@ class TicketController extends Controller
             'title'    => 'required|string|max:255',
             'body'     => 'required|string|max:5000',
             'type'     => 'required|in:support,idea',
+            'team'     => 'sometimes|in:support,sales,technical',
             'priority' => 'sometimes|in:low,medium,high',
+        ], [
+            'team.in' => 'Geçersiz konu başlığı.',
         ]);
+
+        // Konu seçilmezse: fikir/talep satışa, diğerleri desteğe gider
+        $team = $request->input('team')
+            ?? ($request->type === 'idea' ? Ticket::TEAM_SALES : Ticket::TEAM_SUPPORT);
 
         $ticket = Ticket::create([
             'user_id'    => $request->user()->id,
@@ -48,6 +55,8 @@ class TicketController extends Controller
             'title'      => $request->title,
             'body'       => $request->body,
             'type'       => $request->type,
+            'team'       => $team,
+            'source'     => 'panel',
             'priority'   => $request->input('priority', 'medium'),
         ]);
 

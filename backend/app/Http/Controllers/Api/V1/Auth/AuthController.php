@@ -48,6 +48,8 @@ class AuthController extends Controller
                 'user'       => new UserResource($result['user']),
                 'permissions'=> $result['permissions'],
                 'role_level' => $result['role_level'],
+                'is_super'   => $result['is_super'] ?? false,
+                'is_platform'=> $result['is_platform'] ?? false,
             ],
         ]);
     }
@@ -69,6 +71,8 @@ class AuthController extends Controller
                 'user'       => new UserResource($result['user']),
                 'permissions'=> $result['permissions'],
                 'role_level' => $result['role_level'],
+                'is_super'   => $result['is_super'] ?? false,
+                'is_platform'=> $result['is_platform'] ?? false,
             ],
         ]);
     }
@@ -83,6 +87,8 @@ class AuthController extends Controller
                 'user'        => new UserResource($user),
                 'permissions' => $user->getPermissions()->values()->toArray(),
                 'role_level'  => $user->getRoleLevel(),
+                'is_super'    => $user->isSuperAdmin(),
+                'is_platform' => $user->isPlatformUser(),
             ],
         ]);
     }

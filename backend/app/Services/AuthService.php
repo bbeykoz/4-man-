@@ -129,6 +129,9 @@ class AuthService
             'user'        => $user->load(['company', 'department', 'roles.permissions']),
             'permissions' => $user->getPermissions()->values()->toArray(),
             'role_level'  => $user->getRoleLevel(),
+            // Platform tarafı: is_super sınırsız yetkiyi, is_platform hizmet veren ekibi gösterir
+            'is_super'    => $user->isSuperAdmin(),
+            'is_platform' => $user->isPlatformUser(),
         ];
     }
 

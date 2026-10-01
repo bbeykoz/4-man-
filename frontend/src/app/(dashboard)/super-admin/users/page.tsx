@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createColumnHelper } from '@tanstack/react-table'
-import { Pencil, Trash2, Building2, X, Plus, ShieldOff, ShieldX, ShieldCheck } from 'lucide-react'
+import { Pencil, Trash2, Building2, X, Plus, ShieldOff, ShieldX, ShieldCheck, ChevronRight, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/common/PageHeader'
 import { DataTable } from '@/components/common/DataTable'
@@ -11,7 +11,7 @@ import { FilterBar } from '@/components/common/FilterBar'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { ConfirmModal } from '@/components/common/ConfirmModal'
 import { get, del, patch, post } from '@/lib/api'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import type { User } from '@/types/auth.types'
 
 const col = createColumnHelper<User & { company?: { name: string }; roles?: any[] }>()
@@ -38,9 +38,26 @@ interface CreateForm {
 
 const emptyCreate: CreateForm = { company_id: '', name: '', email: '', password: '', phone: '', role_id: '', department_id: '' }
 
+interface CompanyGroup {
+  id: string
+  name: string
+  status: string
+  users: number
+  active: number
+  by_level: { owner: number; manager: number; staff: number; viewer: number }
+}
+
+const LEVEL_LABELS: { key: keyof CompanyGroup['by_level']; label: string; color: string }[] = [
+  { key: 'owner',   label: 'Sahip',    color: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' },
+  { key: 'manager', label: 'Müdür',    color: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
+  { key: 'staff',   label: 'Personel', color: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' },
+  { key: 'viewer',  label: 'İzleyici', color: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400' },
+]
+
 export default function SuperAdminUsersPage() {
   const qc = useQueryClient()
   const [page, setPage] = useState(0)
+  const [openCompany, setOpenCompany] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Record<string, string>>({})
   const [deleteId, setDeleteId]         = useState<string | null>(null)
@@ -84,17 +101,17 @@ export default function SuperAdminUsersPage() {
   })
   const createRoles: { id: string; display_name: string; name: string }[] = createRolesData?.data ?? []
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['sa-users', page, search, filters],
-    queryFn: () => {
-      const params = new URLSearchParams({
-        page: String(page + 1),
-        per_page: '25',
-        ...(search && { search }),
-        ...filters,
-      })
-      return get<any>(`/admin/users?${params}`)
-    },
+  // Şirket bazlı özet: liste şirketlere göre gruplanır
+  const { data: groupsData, isLoading: groupsLoading } = useQuery({
+    queryKey: ['sa-users-by-company', search],
+    queryFn: () => get<{ data: CompanyGroup[] }>(`/admin/users/by-company${search ? `?search=${encodeURIComponent(search)}` : ''}`).then(r => r.data),
+  })
+
+  // Açılan şirketin kullanıcıları
+  const { data: companyUsers, isLoading: companyUsersLoading } = useQuery({
+    queryKey: ['sa-users-of-company', openCompany, filters],
+    queryFn: () => get<any>(`/admin/users?company_id=${openCompany}&per_page=100${filters.status ? `&status=${filters.status}` : ''}`),
+    enabled: !!openCompany,
   })
 
   const deleteMutation = useMutation({
@@ -196,28 +213,15 @@ export default function SuperAdminUsersPage() {
         )
       },
     }),
-    col.accessor('company' as any, {
-      header: 'Şirket',
-      cell: (info) => {
-        const c = info.getValue() as any
-        return c ? (
-          <div className="flex items-center gap-1.5">
-            <Building2 className="h-3.5 w-3.5 text-zinc-400" />
-            <span className="text-sm text-zinc-600 dark:text-zinc-400">{c.name}</span>
-          </div>
-        ) : (
-          <span className="text-xs text-blue-500 font-medium">Süper Admin</span>
-        )
-      },
-    }),
     col.accessor('roles' as any, {
       header: 'Rol',
       cell: (info) => {
         const roles = info.getValue() as any[]
         if (!roles?.length) return <span className="text-zinc-400 text-xs">—</span>
+        const role = roles[0]
         return (
           <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs font-medium">
-            {roles[0]?.name}
+            {role?.display_name ?? role?.level_label ?? role?.name}
           </span>
         )
       },
@@ -287,8 +291,8 @@ export default function SuperAdminUsersPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Tüm Kullanıcılar"
-        description="Sistemdeki tüm kullanıcıları yönetin"
+        title="Şirket Kullanıcıları"
+        description="Şirkete tıklayınca o şirketin kullanıcıları açılır. Kendi ekibin Ekibim sayfasında."
         breadcrumbs={[{ label: 'Süper Admin' }, { label: 'Kullanıcılar' }]}
         actions={
           <button
@@ -318,15 +322,56 @@ export default function SuperAdminUsersPage() {
         ]}
       />
 
-      <DataTable
-        columns={columns}
-        data={data?.data ?? []}
-        total={data?.meta?.total ?? 0}
-        pageIndex={page}
-        onPaginationChange={(s) => setPage(s.pageIndex)}
-        isLoading={isLoading}
-        emptyMessage="Kullanıcı bulunamadı."
-      />
+      {/* Şirket bazlı liste: şirkete tıklayınca kullanıcıları açılır */}
+      {groupsLoading ? (
+        <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-zinc-400" /></div>
+      ) : (groupsData ?? []).length === 0 ? (
+        <p className="py-12 text-center text-sm text-zinc-500">Şirket bulunamadı.</p>
+      ) : (
+        <div className="space-y-2">
+          {(groupsData ?? []).map(group => {
+            const open = openCompany === group.id
+
+            return (
+              <div key={group.id} className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <button
+                  onClick={() => setOpenCompany(open ? null : group.id)}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+                >
+                  <ChevronRight className={cn('h-4 w-4 shrink-0 text-zinc-400 transition-transform', open && 'rotate-90')} />
+                  <Building2 className="h-4 w-4 shrink-0 text-zinc-400" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{group.name}</span>
+                    <span className="block text-xs text-zinc-500">{group.users} kullanıcı · {group.active} aktif</span>
+                  </span>
+
+                  <span className="hidden flex-wrap items-center gap-1.5 sm:flex">
+                    {LEVEL_LABELS.filter(l => group.by_level[l.key] > 0).map(l => (
+                      <span key={l.key} className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', l.color)}>
+                        {l.label} {group.by_level[l.key]}
+                      </span>
+                    ))}
+                  </span>
+                </button>
+
+                {open && (
+                  <div className="border-t border-zinc-100 p-3 dark:border-zinc-800">
+                    <DataTable
+                      columns={columns}
+                      data={companyUsers?.data ?? []}
+                      total={companyUsers?.meta?.total ?? 0}
+                      pageIndex={0}
+                      onPaginationChange={() => {}}
+                      isLoading={companyUsersLoading}
+                      emptyMessage="Bu şirkette kullanıcı yok."
+                    />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <ConfirmModal
         open={!!deleteId}

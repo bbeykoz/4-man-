@@ -110,6 +110,12 @@ class UserRepository extends BaseRepository
             $query->whereHas('roles', fn($q) => $q->where('level', $filters['role_level']));
         }
 
+        // Platform ekibi (hizmeti veren tarafın çalışanları) şirket kullanıcı listesinde görünmez;
+        // onlar "Ekibim" sayfasında yönetilir. include_platform=1 ile istenirse gelir.
+        if (empty($filters['include_platform'])) {
+            $query->whereNotNull('company_id');
+        }
+
         return $query->orderBy('created_at', 'desc')->paginate($perPage);
     }
 }

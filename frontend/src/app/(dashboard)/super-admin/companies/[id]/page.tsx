@@ -4,11 +4,10 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createColumnHelper } from '@tanstack/react-table'
-import {
-  Building2, Users, Layers, Shield, ChevronLeft,
-  Globe, Phone, Mail, MapPin, Calendar, Crown,
-} from 'lucide-react'
+import { Activity, Building2, Calendar, ChevronLeft, Crown, Globe, Layers, Loader2, LogIn, Mail, MapPin, MessagesSquare, Phone, Shield, Users } from 'lucide-react'
+import { toast } from 'sonner'
 import { get } from '@/lib/api'
+import { useAuth } from '@/hooks/useAuth'
 import { DataTable } from '@/components/common/DataTable'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { formatDate } from '@/lib/utils'
@@ -19,13 +18,16 @@ const userCol = createColumnHelper<User & { roles?: any[] }>()
 const deptCol = createColumnHelper<Department>()
 const roleCol = createColumnHelper<Role>()
 
-type Tab = 'users' | 'departments' | 'roles'
+type Tab = 'users' | 'departments' | 'roles' | 'activity' | 'messages'
 
 export default function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('users')
   const [usersPage, setUsersPage] = useState(0)
+  const [openThread, setOpenThread] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState(false)
+  const { impersonateCompany, hasPermission } = useAuth()
 
   // Company info
   const { data: companyData, isLoading: companyLoading } = useQuery({
@@ -54,6 +56,40 @@ export default function CompanyDetailPage() {
     queryFn: () => get<any>(`/admin/companies/${id}/roles`),
     enabled: tab === 'roles',
   })
+
+  // Şirket içi hareketler
+  const { data: activityData, isLoading: activityLoading } = useQuery({
+    queryKey: ['sa-company-activity', id],
+    queryFn: () => get<any>(`/admin/companies/${id}/activity?limit=50`),
+    enabled: tab === 'activity',
+  })
+
+  // Yazışmalar (okuma iz bırakır)
+  const { data: convData, isLoading: convLoading } = useQuery({
+    queryKey: ['sa-company-conversations', id],
+    queryFn: () => get<any>(`/admin/companies/${id}/conversations`),
+    enabled: tab === 'messages',
+  })
+
+  const { data: threadData, isLoading: threadLoading } = useQuery({
+    queryKey: ['sa-company-thread', id, openThread],
+    queryFn: () => get<any>(`/admin/companies/${id}/conversations/${openThread}`),
+    enabled: tab === 'messages' && !!openThread,
+  })
+
+  const connect = async () => {
+    setConnecting(true)
+    try {
+      const target = await impersonateCompany(id)
+      toast.success(`${target.name} şirketine bağlanıldı.`)
+      router.push('/company/dashboard')
+    } catch (e) {
+      const err = e as { message?: string }
+      toast.error(err?.message ?? 'Şirkete bağlanılamadı.')
+    } finally {
+      setConnecting(false)
+    }
+  }
 
   // ── Columns ──────────────────────────────────────────────
   const userColumns = [
@@ -180,6 +216,10 @@ export default function CompanyDetailPage() {
     { key: 'users', label: 'Kullanıcılar', icon: Users, count: usersData?.meta?.total },
     { key: 'departments', label: 'Departmanlar', icon: Layers, count: deptsData?.data?.length },
     { key: 'roles', label: 'Roller', icon: Shield, count: rolesData?.data?.length },
+    { key: 'activity', label: 'Hareketler', icon: Activity },
+    ...(hasPermission('platform.companies.messages')
+      ? [{ key: 'messages' as Tab, label: 'Yazışmalar', icon: MessagesSquare, count: convData?.data?.length }]
+      : []),
   ]
 
   return (
@@ -209,6 +249,17 @@ export default function CompanyDetailPage() {
             </div>
             {company.domain && (
               <p className="text-sm text-zinc-400 mt-0.5">{company.domain}</p>
+            )}
+
+            {hasPermission('platform.companies.impersonate') && (
+              <button
+                onClick={connect}
+                disabled={connecting}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+              >
+                {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+                Şirkete bağlan
+              </button>
             )}
 
             <div className="flex flex-wrap gap-4 mt-3">
@@ -286,6 +337,82 @@ export default function CompanyDetailPage() {
         </div>
 
         <div className="p-4">
+          {tab === 'activity' && (
+            activityLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-zinc-400" /></div>
+            ) : (activityData?.data ?? []).length === 0 ? (
+              <p className="py-12 text-center text-sm text-zinc-500">Hareket kaydı yok.</p>
+            ) : (
+              <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                {(activityData?.data ?? []).map((log: any) => (
+                  <div key={log.id} className="flex items-start gap-3 py-3">
+                    <Activity className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-zinc-800 dark:text-zinc-200">{log.description || log.action}</p>
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        {log.user?.name ?? 'Sistem'} · {formatDate(log.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {tab === 'messages' && (
+            <div className="space-y-4">
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+                Yazışmaları okumak kayıt altına alınır: kim, hangi şirket, ne zaman.
+              </p>
+
+              {convLoading ? (
+                <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-zinc-400" /></div>
+              ) : (convData?.data ?? []).length === 0 ? (
+                <p className="py-12 text-center text-sm text-zinc-500">Yazışma yok.</p>
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+                  <div className="space-y-1.5">
+                    {(convData?.data ?? []).map((c: any) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setOpenThread(c.id)}
+                        className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                          openThread === c.id
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
+                            : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                          {c.participants.map((p: any) => p.name).join(' · ')}
+                        </p>
+                        <p className="truncate text-xs text-zinc-500">{c.last_message ?? '—'}</p>
+                        <p className="mt-0.5 text-[11px] text-zinc-400">{c.messages_count} mesaj</p>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+                    {!openThread ? (
+                      <p className="py-10 text-center text-sm text-zinc-500">Soldan bir yazışma seçin.</p>
+                    ) : threadLoading ? (
+                      <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-zinc-400" /></div>
+                    ) : (
+                      <div className="max-h-[420px] space-y-3 overflow-y-auto">
+                        {(threadData?.data ?? []).map((m: any) => (
+                          <div key={m.id} className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-800/60">
+                            <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">{m.sender}</p>
+                            <p className="mt-1 text-sm text-zinc-800 dark:text-zinc-200">{m.body}</p>
+                            <p className="mt-1 text-[11px] text-zinc-400">{formatDate(m.created_at)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {tab === 'users' && (
             <DataTable
               columns={userColumns}

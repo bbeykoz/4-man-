@@ -19,8 +19,10 @@ class RoleResource extends JsonResource
             'level_label'  => $this->getLevelLabel(),
             'color'        => $this->color,
             'is_system'    => $this->is_system,
+            'is_super'     => (bool) $this->is_super,
+            'is_platform'  => $this->level === 1 && $this->company_id === null,
             'company_id'   => $this->company_id,
-            'created_at'   => $this->created_at->toISOString(),
+            'created_at'   => $this->created_at?->toISOString(),
 
             'department_id' => $this->department_id,
             'department'    => $this->whenLoaded('department', fn() => $this->department

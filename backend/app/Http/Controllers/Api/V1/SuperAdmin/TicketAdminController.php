@@ -14,7 +14,7 @@ class TicketAdminController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Ticket::with(['user:id,name,email,avatar', 'company:id,name'])
+        $query = Ticket::with(['user:id,name,email,avatar', 'company:id,name', 'assignee:id,name'])
             ->orderByDesc('created_at');
 
         if ($request->filled('status')) {
@@ -25,6 +25,12 @@ class TicketAdminController extends Controller
         }
         if ($request->filled('priority')) {
             $query->where('priority', $request->priority);
+        }
+        if ($request->filled('team')) {
+            $query->where('team', $request->team);
+        }
+        if ($request->boolean('mine')) {
+            $query->where('assigned_to', $request->user()->id);
         }
         if ($request->filled('search')) {
             $term = mb_strtolower($request->search);
@@ -39,6 +45,8 @@ class TicketAdminController extends Controller
         // Attach avatar_url accessor
         $items = collect($tickets->items())->map(function ($t) {
             $arr = $t->toArray();
+            $arr['team_label'] = $t->team_label;
+            $arr['assignee']   = $t->assignee ? ['id' => $t->assignee->id, 'name' => $t->assignee->name] : null;
             $arr['user'] = $t->user ? [
                 'id'         => $t->user->id,
                 'name'       => $t->user->name,
@@ -51,6 +59,8 @@ class TicketAdminController extends Controller
         return response()->json([
             'success' => true,
             'data'    => $items,
+            'teams'   => Ticket::TEAMS,
+            'my_team' => $this->teamOf($request->user()),
             'meta'    => [
                 'total'        => $tickets->total(),
                 'current_page' => $tickets->currentPage(),
@@ -84,14 +94,16 @@ class TicketAdminController extends Controller
     public function update(Request $request, string $id): JsonResponse
     {
         $request->validate([
-            'status'     => 'sometimes|in:open,in_progress,answered,closed',
-            'priority'   => 'sometimes|in:low,medium,high',
-            'admin_note' => 'sometimes|nullable|string|max:2000',
+            'status'      => 'sometimes|in:open,in_progress,answered,closed',
+            'priority'    => 'sometimes|in:low,medium,high',
+            'admin_note'  => 'sometimes|nullable|string|max:2000',
+            'team'        => 'sometimes|in:support,sales,technical',
+            'assigned_to' => 'sometimes|nullable|uuid|exists:users,id',
         ]);
 
         $ticket = Ticket::findOrFail($id);
 
-        $data = $request->only(['status', 'priority', 'admin_note']);
+        $data = $request->only(['status', 'priority', 'admin_note', 'team', 'assigned_to']);
 
         // Auto-set status to answered when admin adds/updates a note and status not explicitly set
         if (! isset($data['status']) && ! empty($data['admin_note'])) {
@@ -106,15 +118,43 @@ class TicketAdminController extends Controller
     /**
      * Summary counts for the badge.
      */
-    public function counts(): JsonResponse
+    public function counts(Request $request): JsonResponse
     {
+        $byTeam = [];
+
+        foreach (array_keys(Ticket::TEAMS) as $team) {
+            $byTeam[$team] = [
+                'open'  => Ticket::where('team', $team)->where('status', 'open')->count(),
+                'total' => Ticket::where('team', $team)->count(),
+            ];
+        }
+
         return response()->json([
             'success' => true,
             'data'    => [
                 'open'        => Ticket::where('status', 'open')->count(),
                 'in_progress' => Ticket::where('status', 'in_progress')->count(),
                 'total'       => Ticket::count(),
+                'by_team'     => $byTeam,
             ],
+            'teams'   => Ticket::TEAMS,
+            'my_team' => $this->teamOf($request->user()),
         ]);
+    }
+
+    /** Kullanıcının platform rolüne karşılık gelen ekip; süper adminde boş (hepsini görür). */
+    private function teamOf($user): ?string
+    {
+        if (!$user || $user->isSuperAdmin()) {
+            return null;
+        }
+
+        foreach ($user->roles as $role) {
+            if (isset(Ticket::ROLE_TEAMS[$role->slug])) {
+                return Ticket::ROLE_TEAMS[$role->slug];
+            }
+        }
+
+        return null;
     }
 }

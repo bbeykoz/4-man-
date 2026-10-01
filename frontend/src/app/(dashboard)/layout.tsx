@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Ban, AlertTriangle } from 'lucide-react'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { ImpersonationBanner } from '@/components/layout/ImpersonationBanner'
 import { Topbar } from '@/components/layout/Topbar'
 import { CopilotWidget } from '@/components/copilot/CopilotWidget'
 import { useAuthStore } from '@/store/auth.store'
@@ -41,6 +42,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-900">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <ImpersonationBanner />
         <Topbar />
         <main className="flex-1 overflow-y-auto">
           <div className="p-6">

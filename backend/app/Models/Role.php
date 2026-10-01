@@ -21,6 +21,7 @@ class Role extends Model
         return [
             'level'     => 'integer',
             'is_system' => 'boolean',
+            'is_super'  => 'boolean',
         ];
     }
 
@@ -51,7 +52,18 @@ class Role extends Model
 
     public function getLevelLabel(): string
     {
+        // Platform rolleri de seviye 1'dir; sınırsız yetkili olmayanlar kendi adıyla anılır
+        if ($this->level === 1 && !$this->is_super) {
+            return $this->display_name;
+        }
+
         return RoleLevel::from($this->level)->label();
+    }
+
+    /** Hizmeti veren tarafın rolü mü? */
+    public function isPlatformRole(): bool
+    {
+        return $this->level === 1 && $this->company_id === null;
     }
 
     public function isHigherThan(Role $other): bool

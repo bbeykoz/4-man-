@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import {
   LayoutDashboard, Building2, Users, Shield, Boxes, Calculator, Megaphone,
   Warehouse, ClipboardCheck, Package, RotateCcw, Globe, Truck,
-  Settings, Bell, FileText, ChevronLeft, ChevronRight, LogOut,
+  Settings, Bell, FileText, ChevronLeft, ChevronRight, LogOut, UserCog,
   BarChart2, Ship, MessageSquare, Ticket, CalendarDays, X, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -23,7 +23,7 @@ import { SIDEBAR_SUB_TABS } from '@/components/warehouse/tabs'
 const iconMap: Record<string, React.ElementType> = {
   LayoutDashboard, Building2, Users, Shield, Boxes, Calculator, Megaphone,
   Warehouse, ClipboardCheck, Package, RotateCcw, Globe, Truck,
-  Settings, Bell, FileText, BarChart2, Ship, MessageSquare, Ticket, CalendarDays,
+  Settings, Bell, FileText, BarChart2, Ship, MessageSquare, Ticket, CalendarDays, UserCog,
 }
 
 interface NavItem {
@@ -54,12 +54,14 @@ function getSidebarNav(
       title: t('nav.group.admin'),
       items: [
         { label: t('nav.dashboard'),    href: '/super-admin/dashboard', icon: 'LayoutDashboard' },
-        { label: t('nav.companies'),    href: '/super-admin/companies', icon: 'Building2' },
-        { label: t('nav.users'),        href: '/super-admin/users',     icon: 'Users' },
-        { label: t('nav.departments'),  href: '/super-admin/modules',   icon: 'Boxes' },
-        { label: t('nav.systemLogs'),   href: '/super-admin/logs',      icon: 'FileText' },
+        { label: t('nav.companies'),    href: '/super-admin/companies', icon: 'Building2', permission: 'platform.companies.view' },
+        { label: t('nav.users'),        href: '/super-admin/users',     icon: 'Users',     permission: 'platform.users.view' },
+        { label: t('nav.departments'),  href: '/super-admin/modules',   icon: 'Boxes',     permission: 'platform.modules.manage' },
+        { label: t('nav.platformTeam'), href: '/super-admin/team',      icon: 'UserCog',   permission: 'platform.team.view' },
+        { label: t('nav.platformRoles'),href: '/super-admin/roles',     icon: 'Shield',    permission: 'platform.roles.manage' },
+        { label: t('nav.systemLogs'),   href: '/super-admin/logs',      icon: 'FileText',  permission: 'platform.logs.view' },
         { label: t('nav.settings'),      href: '/super-admin/settings',  icon: 'Settings' },
-        { label: t('nav.adminTickets'),  href: '/super-admin/tickets',   icon: 'Ticket' },
+        { label: t('nav.adminTickets'),  href: '/super-admin/tickets',   icon: 'Ticket',   permission: 'platform.tickets.view' },
       ],
     })
   }
@@ -151,7 +153,7 @@ function SubItems({ base, items, mobile, onNavigate }: {
 
 export function Sidebar() {
   const pathname    = usePathname()
-  const { roleLevel, hasPermission, isCompanyOwner } = useAuthStore()
+  const { roleLevel, hasPermission, isCompanyOwner, isPlatformUser, isSuper } = useAuthStore()
   const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUiStore()
   const { user, logout, isAuthenticated } = useAuth()
   const t = useT()
@@ -166,7 +168,8 @@ export function Sidebar() {
   })
   const unreadMessages = unreadData?.data?.count ?? 0
 
-  const fullAccess  = isCompanyOwner()
+  // Platform ekibi kendi izin listesiyle sınırlıdır; sınırsız yetki yalnızca süper adminde
+  const fullAccess  = isSuper || (!isPlatformUser() && isCompanyOwner())
   const superAdmin  = roleLevel === ROLE_LEVELS.SUPER_ADMIN
   const { isPassive } = useModuleStatus()
   const isPassivePath = (href: string) => isPassive(getModuleSlugForPath(href))

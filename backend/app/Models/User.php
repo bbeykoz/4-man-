@@ -76,12 +76,26 @@ class User extends Authenticatable
 
     // ─── Permission Helpers ──────────────────────────────────────────
 
+    /** Her şeye yetkili tek hesap tipi; izin kontrollerini atlar. */
     public function isSuperAdmin(): bool
     {
         return Cache::remember(
             "user_is_super_{$this->id}",
             now()->addMinutes(10),
-            fn() => $this->roles()->where('level', 1)->exists()
+            fn() => $this->roles()->where('level', 1)->where('is_super', true)->exists()
+        );
+    }
+
+    /**
+     * Platform tarafındaki kullanıcı: hizmeti veren şirketin kendi ekibi.
+     * Süper admin de platform kullanıcısıdır; farkı, izinlerinin sınırsız olmasıdır.
+     */
+    public function isPlatformUser(): bool
+    {
+        return Cache::remember(
+            "user_is_platform_{$this->id}",
+            now()->addMinutes(10),
+            fn() => $this->company_id === null && $this->roles()->where('level', 1)->exists()
         );
     }
 

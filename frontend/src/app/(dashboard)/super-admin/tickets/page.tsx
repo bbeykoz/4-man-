@@ -8,6 +8,7 @@ import { Ticket, Search, ChevronDown, ChevronUp, User, Building2 } from 'lucide-
 import { cn } from '@/lib/utils'
 
 type TicketType     = 'support' | 'idea'
+type TicketTeam     = 'support' | 'sales' | 'technical'
 type TicketStatus   = 'open' | 'in_progress' | 'answered' | 'closed'
 type TicketPriority = 'low' | 'medium' | 'high'
 
@@ -27,7 +28,14 @@ interface TicketItem {
   status: TicketStatus
   priority: TicketPriority
   admin_note: string | null
-  user: TicketUser
+  team: TicketTeam
+  team_label?: string
+  source?: 'panel' | 'marketing'
+  contact_name?: string | null
+  contact_email?: string | null
+  contact_phone?: string | null
+  contact_company?: string | null
+  user: TicketUser | null
   company: { id: string; name: string } | null
   created_at: string
 }
@@ -40,8 +48,20 @@ interface PaginatedTickets {
 
 interface TicketCounts {
   success: boolean
-  data: { open: number; in_progress: number; total: number }
+  data: {
+    open: number
+    in_progress: number
+    total: number
+    by_team: Record<TicketTeam, { open: number; total: number }>
+  }
+  my_team?: TicketTeam | null
 }
+
+const TEAMS: { key: TicketTeam; label: string; color: string }[] = [
+  { key: 'support',   label: 'Destek Ekibi', color: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' },
+  { key: 'sales',     label: 'Satış Ekibi',  color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' },
+  { key: 'technical', label: 'Teknik Ekip',  color: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
+]
 
 const statusLabel: Record<TicketStatus, string> = { open: 'Açık', in_progress: 'İşlemde', answered: 'Yanıtlandı', closed: 'Kapalı' }
 const statusColor: Record<TicketStatus, string> = {
@@ -68,6 +88,7 @@ export default function AdminTicketsPage() {
   const [search,   setSearch]   = useState('')
   const [status,   setStatus]   = useState('')
   const [type,     setType]     = useState('')
+  const [team,     setTeam]     = useState<TicketTeam | ''>('')
   const [priority, setPriority] = useState('')
   const [page,     setPage]     = useState(1)
 
@@ -75,6 +96,7 @@ export default function AdminTicketsPage() {
   const [editNote,    setEditNote]    = useState<string>('')
   const [editStatus,  setEditStatus]  = useState<TicketStatus | ''>('')
   const [editPriority,setEditPriority]= useState<TicketPriority | ''>('')
+  const [editTeam,    setEditTeam]    = useState<TicketTeam | ''>('')
   const [saving,      setSaving]      = useState(false)
 
   const { data: countsData } = useQuery<TicketCounts>({
@@ -84,8 +106,8 @@ export default function AdminTicketsPage() {
   const counts = countsData?.data
 
   const { data, isLoading } = useQuery<PaginatedTickets>({
-    queryKey: ['admin-tickets', search, status, type, priority, page],
-    queryFn: () => get('/admin/tickets', { params: { search, status, type, priority, page, per_page: 20 } }),
+    queryKey: ['admin-tickets', search, status, type, priority, team, page],
+    queryFn: () => get('/admin/tickets', { params: { search, status, type, priority, team, page, per_page: 20 } }),
   })
 
   const tickets = data?.data ?? []
@@ -106,6 +128,7 @@ export default function AdminTicketsPage() {
     setExpandedId(ticket.id)
     setEditNote(ticket.admin_note ?? '')
     setEditStatus(ticket.status)
+    setEditTeam(ticket.team)
     setEditPriority(ticket.priority)
   }
 
@@ -113,6 +136,7 @@ export default function AdminTicketsPage() {
     const payload: Record<string, string> = {}
     if (editStatus)   payload.status   = editStatus
     if (editPriority) payload.priority = editPriority
+    if (editTeam)     payload.team     = editTeam
     payload.admin_note = editNote
     updateMutation.mutate({ id, payload })
   }
@@ -141,6 +165,38 @@ export default function AdminTicketsPage() {
             </span>
           </div>
         )}
+      </div>
+
+      {/* Ekip sekmeleri: talep hangi ekibe düştüyse orada görünür */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => { setTeam(''); setPage(1) }}
+          className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+            team === ''
+              ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900'
+              : 'bg-white text-zinc-600 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800'
+          }`}
+        >
+          Tümü {counts ? `(${counts.total})` : ''}
+        </button>
+        {TEAMS.map(t => (
+          <button
+            key={t.key}
+            onClick={() => { setTeam(t.key); setPage(1) }}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              team === t.key
+                ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900'
+                : 'bg-white text-zinc-600 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800'
+            }`}
+          >
+            {t.label}
+            {counts?.by_team?.[t.key] && (
+              <span className="ml-1.5 text-xs opacity-70">
+                {counts.by_team[t.key].open} açık / {counts.by_team[t.key].total}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Filters */}
@@ -208,25 +264,38 @@ export default function AdminTicketsPage() {
                     <span className="text-xs font-mono text-zinc-400 flex-shrink-0 w-10">
                       #{ticket.ticket_number}
                     </span>
-                    {/* Avatar */}
-                    <img
-                      src={ticket.user.avatar_url}
-                      alt={ticket.user.name}
-                      className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-                    />
+                    {/* Avatar: tanıtım sayfasından gelen taleplerde hesap yok */}
+                    {ticket.user ? (
+                      <img
+                        src={ticket.user.avatar_url}
+                        alt={ticket.user.name}
+                        className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                      />
+                    ) : (
+                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                        {(ticket.contact_name ?? '?').charAt(0).toUpperCase()}
+                      </span>
+                    )}
                     {/* User & company */}
                     <div className="flex flex-col min-w-0 w-36 flex-shrink-0">
                       <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200 truncate flex items-center gap-1">
                         <User className="h-3 w-3 text-zinc-400" />
-                        {ticket.user.name}
+                        {ticket.user?.name ?? ticket.contact_name ?? 'Ziyaretçi'}
                       </span>
-                      {ticket.company && (
+                      {(ticket.company || ticket.contact_company || ticket.source === 'marketing') && (
                         <span className="text-xs text-zinc-400 truncate flex items-center gap-1">
                           <Building2 className="h-3 w-3" />
-                          {ticket.company.name}
+                          {ticket.company?.name ?? ticket.contact_company ?? 'Tanıtım sayfası'}
                         </span>
                       )}
                     </div>
+                    {/* Ekip rozeti */}
+                    <span className={cn(
+                      'text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0',
+                      TEAMS.find(t => t.key === ticket.team)?.color ?? 'bg-zinc-100 text-zinc-600',
+                    )}>
+                      {ticket.team_label ?? TEAMS.find(t => t.key === ticket.team)?.label ?? 'Destek Ekibi'}
+                    </span>
                     {/* Badges */}
                     <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0', statusColor[ticket.status])}>
                       {statusLabel[ticket.status]}
@@ -261,8 +330,33 @@ export default function AdminTicketsPage() {
                         <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">{ticket.body}</p>
                       </div>
 
+                      {/* Tanıtım sayfasından gelen taleplerin iletişim bilgileri */}
+                      {ticket.source === 'marketing' && (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
+                          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                            Tanıtım sayfasından geldi
+                          </p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-zinc-700 dark:text-zinc-300">
+                            {ticket.contact_name && <span>{ticket.contact_name}</span>}
+                            {ticket.contact_email && <a href={`mailto:${ticket.contact_email}`} className="underline">{ticket.contact_email}</a>}
+                            {ticket.contact_phone && <span>{ticket.contact_phone}</span>}
+                            {ticket.contact_company && <span>{ticket.contact_company}</span>}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Edit controls */}
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Ekip</label>
+                          <select
+                            value={editTeam}
+                            onChange={e => setEditTeam(e.target.value as TicketTeam)}
+                            className="w-full text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            {TEAMS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                          </select>
+                        </div>
                         <div>
                           <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Durum</label>
                           <select

@@ -52,6 +52,8 @@ export default function TicketsPage() {
   const [title,    setTitle]    = useState('')
   const [body,     setBody]     = useState('')
   const [type,     setType]     = useState<TicketType>('support')
+  // Talebin hangi ekibe düşeceği: destek, satış veya teknik
+  const [team,     setTeam]     = useState<'support' | 'sales' | 'technical'>('support')
   const [priority, setPriority] = useState<TicketPriority>('medium')
 
   const { data, isLoading } = useQuery<PaginatedTickets>({
@@ -60,12 +62,12 @@ export default function TicketsPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: () => post('/tickets', { title, body, type, priority }),
+    mutationFn: () => post('/tickets', { title, body, type, team, priority }),
     onSuccess: () => {
       toast.success('Talebiniz iletildi.')
       qc.invalidateQueries({ queryKey: ['tickets'] })
       setShowForm(false)
-      setTitle(''); setBody(''); setType('support'); setPriority('medium')
+      setTitle(''); setBody(''); setType('support'); setTeam('support'); setPriority('medium')
     },
     onError: (err: any) => toast.error(err?.message ?? 'Hata oluştu.'),
   })
@@ -99,7 +101,19 @@ export default function TicketsPage() {
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 space-y-4">
           <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Yeni Talep Oluştur</h2>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Konu</label>
+              <select
+                value={team}
+                onChange={e => setTeam(e.target.value as 'support' | 'sales' | 'technical')}
+                className="w-full text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="support">Kullanım / destek</option>
+                <option value="technical">Teknik sorun</option>
+                <option value="sales">Abonelik / satış</option>
+              </select>
+            </div>
             <div>
               <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Tür</label>
               <select

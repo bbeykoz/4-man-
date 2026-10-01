@@ -10,6 +10,7 @@ import { TooltipNavbar } from '@/components/watermelon/tooltip-navbar'
 import { WigglingCards } from '@/components/watermelon/wiggling-cards'
 import { FeatureTour } from '@/components/watermelon/feature-tour'
 import ContactBlock from '@/components/watermelon/contact-block'
+import { ContactForm } from '@/components/watermelon/contact-form'
 import AnnouncementBar from '@/components/watermelon/announcement-bar'
 import Bento from '@/components/watermelon/bento'
 import FeaturesSection from '@/components/watermelon/features-section'
@@ -518,14 +519,17 @@ export default function MarketPage() {
         />
       </section>
 
-      {/* İletişim — watermelon contact 1 bloğu */}
+      {/* İletişim — watermelon contact 1 bloğu + form (form satış ekibine düşer) */}
       <section id="iletisim" className="border-t border-zinc-900">
         <ContactBlock
           badgeText="Bize ulaşın"
           title="Size nasıl yardımcı olalım?"
-          description="Kurulum, veri aktarımı ve eğitim dahil. Hangi konuda destek istediğinizi seçin, aynı gün dönüş yapalım."
+          description="Kurulum, veri aktarımı ve eğitim dahil. Formu doldurun, satış ekibimiz aynı gün dönsün."
           contactMethods={CONTACT_METHODS}
         />
+        <div className="mx-auto max-w-2xl px-4 pb-20">
+          <ContactForm />
+        </div>
       </section>
 
       {/* Kapanış — watermelon CTA bloğu */}

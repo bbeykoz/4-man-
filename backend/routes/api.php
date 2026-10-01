@@ -23,7 +23,10 @@ use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\MessageController;
 use App\Http\Controllers\Api\V1\ActivityLogController;
 use App\Http\Controllers\Api\V1\SettingsController;
+use App\Http\Controllers\Api\V1\SuperAdmin\CompanyAccessController;
 use App\Http\Controllers\Api\V1\SuperAdmin\CompanyController;
+use App\Http\Controllers\Api\V1\SuperAdmin\PlatformRoleController;
+use App\Http\Controllers\Api\V1\SuperAdmin\PlatformTeamController;
 use App\Http\Controllers\Api\V1\SuperAdmin\GlobalUserController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ModuleController as SystemModuleController;
 use App\Http\Controllers\Api\V1\Company\CompanyModuleController;
@@ -33,6 +36,7 @@ use App\Http\Controllers\Api\V1\TicketController;
 use App\Http\Controllers\Api\V1\SuperAdmin\TicketAdminController;
 use App\Http\Controllers\Api\V1\MeetingController;
 use App\Http\Controllers\Api\V1\ModuleStatusController;
+use App\Http\Controllers\Api\V1\PublicLeadController;
 use Illuminate\Support\Facades\Route;
 
 // ──────────────────────────────────────────────────────────────────
@@ -47,6 +51,11 @@ Route::prefix('auth')->group(function () {
     Route::post('2fa/setup-pending',  [TwoFactorController::class, 'setupPending'])->middleware('throttle:10,1');
     Route::post('2fa/setup-complete', [TwoFactorController::class, 'completePendingSetup'])->middleware('throttle:10,1');
 });
+
+// ──────────────────────────────────────────────────────────────────
+// PUBLIC — tanıtım sayfası formları
+// ──────────────────────────────────────────────────────────────────
+Route::post('public/leads', [PublicLeadController::class, 'store'])->middleware('throttle:5,1');
 
 // ──────────────────────────────────────────────────────────────────
 // PROTECTED
@@ -137,38 +146,71 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
     // ──────────────────────────────────────────────────────────────
     // SUPER ADMIN
     // ──────────────────────────────────────────────────────────────
-    Route::prefix('admin')->middleware('permission:system.settings')->group(function () {
-        Route::apiResource('companies', CompanyController::class);
-        Route::post('companies/{id}/suspend',      [CompanyController::class, 'suspend']);
-        Route::post('companies/{id}/activate',     [CompanyController::class, 'activate']);
-        Route::get('companies/stats',              [CompanyController::class, 'stats']);
-        Route::get('companies/{id}/departments',   [CompanyController::class, 'departments']);
-        Route::get('companies/{id}/roles',         [CompanyController::class, 'roles']);
+    // ──────────────────────────────────────────────────────────────
+    // PLATFORM (hizmeti veren taraf). Her uç kendi iznine bağlıdır;
+    // süper admin izin kontrolünü atladığı için hepsine erişir.
+    // ──────────────────────────────────────────────────────────────
+    Route::prefix('admin')->group(function () {
+        // Şirketler
+        Route::get('companies',                [CompanyController::class, 'index'])->middleware('permission:platform.companies.view,system.settings');
+        Route::get('companies/stats',          [CompanyController::class, 'stats'])->middleware('permission:platform.companies.view,system.settings');
+        Route::get('companies/{id}',           [CompanyController::class, 'show'])->middleware('permission:platform.companies.view,system.settings');
+        Route::get('companies/{id}/departments', [CompanyController::class, 'departments'])->middleware('permission:platform.companies.view,system.settings');
+        Route::get('companies/{id}/roles',     [CompanyController::class, 'roles'])->middleware('permission:platform.companies.view,system.settings');
+        Route::post('companies',               [CompanyController::class, 'store'])->middleware('permission:platform.companies.create,system.settings');
+        Route::put('companies/{id}',           [CompanyController::class, 'update'])->middleware('permission:platform.companies.edit,system.settings');
+        Route::patch('companies/{id}',         [CompanyController::class, 'update'])->middleware('permission:platform.companies.edit,system.settings');
+        Route::delete('companies/{id}',        [CompanyController::class, 'destroy'])->middleware('permission:platform.companies.delete,system.settings');
+        Route::post('companies/{id}/suspend',  [CompanyController::class, 'suspend'])->middleware('permission:platform.companies.suspend,system.settings');
+        Route::post('companies/{id}/activate', [CompanyController::class, 'activate'])->middleware('permission:platform.companies.suspend,system.settings');
 
-        Route::get('users',              [GlobalUserController::class, 'index']);
-        Route::post('users',             [GlobalUserController::class, 'store']);
-        Route::get('users/{id}',         [GlobalUserController::class, 'show']);
-        Route::patch('users/{id}',       [GlobalUserController::class, 'update']);
-        Route::post('users/{id}/impersonate',  [GlobalUserController::class, 'impersonate']);
-        Route::post('users/{id}/suspend',      [GlobalUserController::class, 'suspend']);
-        Route::post('users/{id}/activate',     [GlobalUserController::class, 'activate']);
-        Route::post('users/{id}/enable-2fa',   [GlobalUserController::class, 'enable2FA']);
-        Route::post('users/{id}/disable-2fa',  [GlobalUserController::class, 'disable2FA']);
-        Route::post('users/{id}/reset-2fa',    [GlobalUserController::class, 'reset2FA']);
-        Route::delete('users/{id}',            [GlobalUserController::class, 'destroy']);
+        // Şirket içi görünüm ve şirkete bağlanma
+        Route::get('companies/{id}/overview',  [CompanyAccessController::class, 'overview'])->middleware('permission:platform.companies.view,system.settings');
+        Route::get('companies/{id}/users',     [CompanyAccessController::class, 'users'])->middleware('permission:platform.companies.view,system.settings');
+        Route::get('companies/{id}/activity',  [CompanyAccessController::class, 'activity'])->middleware('permission:platform.companies.view,system.settings');
+        Route::get('companies/{id}/conversations', [CompanyAccessController::class, 'conversations'])->middleware('permission:platform.companies.messages,system.settings');
+        Route::get('companies/{id}/conversations/{conversationId}', [CompanyAccessController::class, 'messages'])->middleware('permission:platform.companies.messages,system.settings');
+        Route::post('companies/{id}/impersonate', [CompanyAccessController::class, 'impersonate'])->middleware('permission:platform.companies.impersonate,system.settings');
 
-        Route::get('logs',               [ActivityLogController::class, 'globalIndex']);
-        Route::post('notifications/broadcast', [NotificationController::class, 'broadcast']);
+        // Platform ekibi ve rolleri
+        Route::get('team',                [PlatformTeamController::class, 'index'])->middleware('permission:platform.team.view,platform.team.manage,system.settings');
+        Route::post('team',               [PlatformTeamController::class, 'store'])->middleware('permission:platform.team.manage,system.settings');
+        Route::patch('team/{id}',         [PlatformTeamController::class, 'update'])->middleware('permission:platform.team.manage,system.settings');
+        Route::delete('team/{id}',        [PlatformTeamController::class, 'destroy'])->middleware('permission:platform.team.manage,system.settings');
 
-        // ── Ticket management (super admin) ─────────────────
-        Route::get('tickets',            [TicketAdminController::class, 'index']);
-        Route::get('tickets/counts',     [TicketAdminController::class, 'counts']);
-        Route::get('tickets/{id}',       [TicketAdminController::class, 'show']);
-        Route::patch('tickets/{id}',     [TicketAdminController::class, 'update']);
+        Route::get('platform-roles',              [PlatformRoleController::class, 'index'])->middleware('permission:platform.team.view,platform.roles.manage,system.settings');
+        Route::get('platform-roles/permissions',  [PlatformRoleController::class, 'permissions'])->middleware('permission:platform.roles.manage,system.settings');
+        Route::post('platform-roles',             [PlatformRoleController::class, 'store'])->middleware('permission:platform.roles.manage,system.settings');
+        Route::patch('platform-roles/{id}',       [PlatformRoleController::class, 'update'])->middleware('permission:platform.roles.manage,system.settings');
+        Route::delete('platform-roles/{id}',      [PlatformRoleController::class, 'destroy'])->middleware('permission:platform.roles.manage,system.settings');
 
-        Route::get('modules',            [SystemModuleController::class, 'index']);
-        Route::post('modules',           [SystemModuleController::class, 'store']);
-        Route::patch('modules/{id}',     [SystemModuleController::class, 'update']);
+        // Kullanıcılar (tüm şirketler)
+        Route::get('users',              [GlobalUserController::class, 'index'])->middleware('permission:platform.users.view,system.settings');
+        Route::get('users/by-company',   [GlobalUserController::class, 'byCompany'])->middleware('permission:platform.users.view,system.settings');
+        Route::get('users/{id}',         [GlobalUserController::class, 'show'])->middleware('permission:platform.users.view,system.settings');
+        Route::post('users',             [GlobalUserController::class, 'store'])->middleware('permission:platform.users.manage,system.settings');
+        Route::patch('users/{id}',       [GlobalUserController::class, 'update'])->middleware('permission:platform.users.manage,system.settings');
+        Route::post('users/{id}/impersonate',  [GlobalUserController::class, 'impersonate'])->middleware('permission:platform.companies.impersonate,system.settings');
+        Route::post('users/{id}/suspend',      [GlobalUserController::class, 'suspend'])->middleware('permission:platform.users.manage,system.settings');
+        Route::post('users/{id}/activate',     [GlobalUserController::class, 'activate'])->middleware('permission:platform.users.manage,system.settings');
+        Route::post('users/{id}/enable-2fa',   [GlobalUserController::class, 'enable2FA'])->middleware('permission:platform.users.manage,system.settings');
+        Route::post('users/{id}/disable-2fa',  [GlobalUserController::class, 'disable2FA'])->middleware('permission:platform.users.manage,system.settings');
+        Route::post('users/{id}/reset-2fa',    [GlobalUserController::class, 'reset2FA'])->middleware('permission:platform.users.manage,system.settings');
+        Route::delete('users/{id}',            [GlobalUserController::class, 'destroy'])->middleware('permission:platform.users.manage,system.settings');
+
+        Route::get('logs',               [ActivityLogController::class, 'globalIndex'])->middleware('permission:platform.logs.view,system.logs,system.settings');
+        Route::post('notifications/broadcast', [NotificationController::class, 'broadcast'])->middleware('permission:platform.notifications.send,system.settings');
+
+        // Destek talepleri
+        Route::get('tickets',            [TicketAdminController::class, 'index'])->middleware('permission:platform.tickets.view,system.settings');
+        Route::get('tickets/counts',     [TicketAdminController::class, 'counts'])->middleware('permission:platform.tickets.view,system.settings');
+        Route::get('tickets/{id}',       [TicketAdminController::class, 'show'])->middleware('permission:platform.tickets.view,system.settings');
+        Route::patch('tickets/{id}',     [TicketAdminController::class, 'update'])->middleware('permission:platform.tickets.manage,system.settings');
+
+        // Departman modülleri
+        Route::get('modules',            [SystemModuleController::class, 'index'])->middleware('permission:platform.modules.manage,system.modules,system.settings');
+        Route::post('modules',           [SystemModuleController::class, 'store'])->middleware('permission:platform.modules.manage,system.settings');
+        Route::patch('modules/{id}',     [SystemModuleController::class, 'update'])->middleware('permission:platform.modules.manage,system.settings');
     });
 
     // ──────────────────────────────────────────────────────────────

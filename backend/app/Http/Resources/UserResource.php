@@ -28,7 +28,7 @@ class UserResource extends JsonResource
             'email_verified_at'  => $this->email_verified_at?->toISOString(),
             'last_login_at'      => $this->last_login_at?->toISOString(),
             'last_login_ip'      => $this->last_login_ip,
-            'created_at'         => $this->created_at->toISOString(),
+            'created_at'         => $this->created_at?->toISOString(),
 
             // Conditional relations
             'company'    => $this->whenLoaded('company', fn() => new CompanyResource($this->company)),

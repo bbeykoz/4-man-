@@ -19,6 +19,9 @@ chown 82:82 /opt/byslab/backend/.env
 echo "→ PHP bağımlılıkları"
 docker compose run --rm --no-deps app composer install --no-dev --optimize-autoloader --no-interaction
 
+echo "→ Sınıf haritası (yeni dosyalar için)"
+docker compose run --rm --no-deps app composer dump-autoload --optimize
+
 echo "→ Veritabanı"
 docker compose run --rm app php artisan migrate --force
 
