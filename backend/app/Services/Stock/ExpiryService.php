@@ -128,7 +128,7 @@ class ExpiryService
             'created_by'       => $user->id,
             'updated_by'       => $user->id,
             'title'            => "SKT: {$product->name}" . ($data['lot_number'] ? " ({$data['lot_number']})" : '') . " — {$label}",
-            'description'      => $data['note'] ?? 'SKT / FEFO önerisinden oluşturuldu.',
+            'description'      => $data['note'] ?? 'SKT / FIFO önerisinden oluşturuldu.',
             'type'             => $data['type'] === 'transfer' ? 'transfer' : 'damage',
             'status'           => 'pending',
             'priority'         => 'high',
@@ -193,7 +193,7 @@ class ExpiryService
             return ['recommendation' => 'Karantinada: QC\'yi hızlandır', 'action' => null];
         }
         if ($lot['loss_qty'] <= 0) {
-            return ['recommendation' => 'FEFO sırasında tüketilecek', 'action' => null];
+            return ['recommendation' => 'FIFO sırasında tüketilecek', 'action' => null];
         }
 
         // Başka depoda SKT'den önce ne kadar tüketilebilir?

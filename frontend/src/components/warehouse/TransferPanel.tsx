@@ -216,7 +216,7 @@ export function TransferPanel() {
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-zinc-400">Emir &quot;Bekliyor&quot; transfer kaydı olarak açılır; Depolama listesinden onaylayınca stok FEFO sırasıyla (SKT&apos;si yakın lot önce) taşınır.</p>
+      <p className="text-[11px] text-zinc-400">Emir &quot;Bekliyor&quot; transfer kaydı olarak açılır; Depolama listesinden onaylayınca stok FIFO sırasıyla (SKT&apos;si yakın lot önce) taşınır.</p>
     </div>
   )
 }

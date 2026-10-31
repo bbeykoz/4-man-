@@ -49,7 +49,7 @@ class WarehouseKpiService
                 fn($d, $v) => $v > 0 && ($d === null || $d >= 0) ? 'Restock önceliği artırılmalı.' : ($v > 0 ? 'Kritik ürün sayısı azalıyor.' : 'Kritik stoklu ürün yok.'),
                 $risky->sortByDesc('risk_score')->take(3)->map(fn($r) => "{$r['name']} (risk %{$r['risk_score']})")->values()->all()),
             $this->kpi('expiry_products', 'SKT riski taşıyan ürün', '', $expiryNow['products']->count(), null, false,
-                fn($d, $v) => $v > 0 ? 'FEFO aksiyonları gözden geçirilmeli.' : 'SKT riski yok.',
+                fn($d, $v) => $v > 0 ? 'FIFO aksiyonları gözden geçirilmeli.' : 'SKT riski yok.',
                 $expiryNow['products']->take(3)->pluck('headline')->all()),
             $this->kpi('damage_rate', 'Hasarlı ürün oranı', '%', $c['damage_rate'], $p['damage_rate'], false,
                 fn($d, $v) => ($d ?? $v) > 0.2 ? 'Anomali analizi önerilir.' : ($d !== null && $d < -0.2 ? 'Hasar oranı düşüyor.' : 'Hasar oranı düşük ve stabil.'),

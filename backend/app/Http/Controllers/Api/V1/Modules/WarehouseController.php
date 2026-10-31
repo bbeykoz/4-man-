@@ -252,7 +252,7 @@ class WarehouseController extends BaseModuleController
                 $uyarilar[] = "Son kullanma tarihi geçmiş ürün girildi{$lot}: {$skt->format('d.m.Y')}, {$gun} gün önce doldu. Girişi gözden geçirin.";
             } elseif ($skt->lte($bugun->copy()->addDays(self::SKT_YAKIN_GUN))) {
                 $gun = (int) $bugun->diffInDays($skt);
-                $uyarilar[] = "Son kullanma tarihi yakın ürün girildi{$lot}: {$skt->format('d.m.Y')}, {$gun} gün kaldı. FEFO ile öncelikli çıkarın.";
+                $uyarilar[] = "Son kullanma tarihi yakın ürün girildi{$lot}: {$skt->format('d.m.Y')}, {$gun} gün kaldı. FIFO ile öncelikli çıkarın.";
             }
         }
 

@@ -46,7 +46,7 @@ export function FefoHint({ productId, warehouseId, type, batchNumber, unit }: Fe
   return (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/40 px-3 py-2 space-y-1.5">
       <p className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-1">
-        <ListOrdered className="h-3.5 w-3.5" /> FEFO sırası {!batchNumber.trim() && '(lot boş: otomatik bu sırayla düşülür)'}
+        <ListOrdered className="h-3.5 w-3.5" /> FIFO sırası {!batchNumber.trim() && '(lot boş: otomatik bu sırayla düşülür)'}
       </p>
       <div className="flex flex-wrap gap-1.5">
         {fefo.slice(0, 4).map((l, i) => (
@@ -57,7 +57,7 @@ export function FefoHint({ productId, warehouseId, type, batchNumber, unit }: Fe
       </div>
       {offFefo && (
         <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1">
-          <AlertTriangle className="h-3.5 w-3.5" /> FEFO dışı: önce {first.lot_number ?? 'lotsuz stok'} ({formatDate(first.expiry_date!)}) çıkmalı.
+          <AlertTriangle className="h-3.5 w-3.5" /> FIFO dışı: önce {first.lot_number ?? 'lotsuz stok'} ({formatDate(first.expiry_date!)}) çıkmalı.
         </p>
       )}
       {unknown && (

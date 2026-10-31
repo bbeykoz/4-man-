@@ -28,7 +28,7 @@ const stats = [
     metric: '2,4 sa',
     subLabel: 'Kayıttan sevkiyata',
     description:
-      'Kalite kontrolü, lot seçimi ve onay tek ekranda ilerler. FEFO ile hangi lotun çıkacağı kendiliğinden belirlenir.',
+      'Kalite kontrolü, lot seçimi ve onay tek ekranda ilerler. FIFO ile hangi lotun çıkacağı kendiliğinden belirlenir.',
   },
   {
     icon: FaShieldAlt,

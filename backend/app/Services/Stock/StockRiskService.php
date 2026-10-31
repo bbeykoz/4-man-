@@ -345,7 +345,7 @@ class StockRiskService
             return "Siparişte {$this->fmt($onOrder)} {$unit} var, teslimi takip et";
         }
         if ($driver === 'expiry' && $score >= 30) {
-            return "FEFO: {$this->fmt($expiry['qty'])} {$unit} için öncelikli sevk / kampanya";
+            return "FIFO: {$this->fmt($expiry['qty'])} {$unit} için öncelikli sevk / kampanya";
         }
         if ($score >= 30) {
             return 'İzle';

@@ -23,7 +23,7 @@ class ReportService
         'lots'            => 'Lot / SKT listesi',
         'movements'       => 'Stok hareket defteri',
         'risk'            => 'Stok risk skoru',
-        'expiry'          => 'SKT / FEFO riskleri',
+        'expiry'          => 'SKT / FIFO riskleri',
         'dead_stock'      => 'Hareket analizi (ölü stok)',
         'abc_xyz'         => 'ABC / XYZ sınıfları',
         'transfers'       => 'Depo transfer önerileri',
