@@ -22,6 +22,7 @@ interface ScenarioInput {
 
 interface Summary {
   affected_products: number
+  worsened_products: number
   shortfall_products: number
   shortfall_qty: number
   shortfall_value: number
@@ -153,14 +154,18 @@ export function WhatIfPanel() {
               )}
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <label className="text-[11px] text-zinc-500">Talep %
-                <input type="number" value={s.demand_change_pct} onChange={e => update(i, { demand_change_pct: e.target.value })} placeholder="0" className={inputCls} />
+              {/* Sınırlar alanın yanında yazar; sunucuya gitmeden hata alınmaz */}
+              <label className="text-[11px] text-zinc-500">
+                Talep % <span className="text-zinc-400">(−90 … 300)</span>
+                <input type="number" min={-90} max={300} value={s.demand_change_pct} onChange={e => update(i, { demand_change_pct: e.target.value })} placeholder="0" className={inputCls} />
               </label>
-              <label className="text-[11px] text-zinc-500">Tedarik ± gün
-                <input type="number" value={s.lead_time_extra_days} onChange={e => update(i, { lead_time_extra_days: e.target.value })} placeholder="0" className={inputCls} />
+              <label className="text-[11px] text-zinc-500">
+                Tedarik ± gün <span className="text-zinc-400">(−60 … 120)</span>
+                <input type="number" min={-60} max={120} step={1} value={s.lead_time_extra_days} onChange={e => update(i, { lead_time_extra_days: e.target.value })} placeholder="0" className={inputCls} />
               </label>
-              <label className="text-[11px] text-zinc-500">Güvenlik %
-                <input type="number" value={s.safety_change_pct} onChange={e => update(i, { safety_change_pct: e.target.value })} placeholder="0" className={inputCls} />
+              <label className="text-[11px] text-zinc-500">
+                Güvenlik % <span className="text-zinc-400">(−100 … 300)</span>
+                <input type="number" min={-100} max={300} value={s.safety_change_pct} onChange={e => update(i, { safety_change_pct: e.target.value })} placeholder="0" className={inputCls} />
               </label>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -217,8 +222,21 @@ export function WhatIfPanel() {
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 tabular-nums">
               <tr>
-                <td className="px-3 py-2">Etkilenecek ürün</td>
-                {columns.map(c => <td key={c.key} className="px-3 py-2 text-right">{c.key === 'base' ? '—' : c.s.affected_products}</td>)}
+                <td className="px-3 py-2">Etkilenen ürün</td>
+                {columns.map(c => (
+                  <td key={c.key} className="px-3 py-2 text-right">
+                    {c.key === 'base' ? '—' : (
+                      <>
+                        {c.s.affected_products}
+                        {c.s.worsened_products > 0 && (
+                          <span className="ml-1 text-[11px] text-orange-600 dark:text-orange-400" title="Durumu kötüleşen ürün">
+                            ({c.s.worsened_products} kötüleşti)
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </td>
+                ))}
               </tr>
               <tr>
                 <td className="px-3 py-2">Stok açığı <span className="text-[11px] text-zinc-400">(tedarik süresi içinde)</span></td>

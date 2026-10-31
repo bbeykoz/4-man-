@@ -2,6 +2,8 @@
 
 namespace App\Services\Stock;
 
+use App\Support\AppTime;
+
 use App\Models\PurchaseOrder;
 use App\Models\StockAnomaly;
 use App\Models\StockMovement;
@@ -62,15 +64,18 @@ class ReportService
     /** Grafik 1: aylık işlem hacmi (stoğa işlenmiş hareket sayısı, giriş / çıkış miktarı). */
     private function monthlyVolume(string $companyId, int $months, ?string $warehouseId): array
     {
-        $start = Carbon::today()->startOfMonth()->subMonths($months - 1);
+        $start = AppTime::today()->startOfMonth()->subMonths($months - 1);
 
         $counts = DB::table('warehouse_records')
             ->where('company_id', $companyId)
             ->whereNotNull('product_id')->whereNotNull('posted_at')->whereNull('reversed_at')->whereNull('deleted_at')
             ->when($warehouseId, fn($q) => $q->where(fn($x) => $x->where('warehouse_id', $warehouseId)->orWhere('to_warehouse_id', $warehouseId)))
             ->whereRaw('COALESCE(transaction_date, DATE(posted_at)) >= ?', [$start->toDateString()])
-            ->groupBy(DB::raw("to_char(COALESCE(transaction_date, DATE(posted_at)), 'YYYY-MM')"))
-            ->get([DB::raw("to_char(COALESCE(transaction_date, DATE(posted_at)), 'YYYY-MM') as ym"), DB::raw('COUNT(*) as n')])
+            ->groupBy(DB::raw("to_char(COALESCE(transaction_date, DATE(" . AppTime::sqlLocal('posted_at') . ")), 'YYYY-MM')"))
+            ->get([
+                DB::raw("to_char(COALESCE(transaction_date, DATE(" . AppTime::sqlLocal('posted_at') . ")), 'YYYY-MM') as ym"),
+                DB::raw('COUNT(*) as n'),
+            ])
             ->pluck('n', 'ym');
 
         $qty = StockMovement::where('company_id', $companyId)
@@ -78,8 +83,12 @@ class ReportService
             ->when($warehouseId, fn($q) => $q->where('warehouse_id', $warehouseId))
             ->whereIn('movement_type', ['stock_in', 'return_in', 'qc_release', 'opening', 'stock_out'])
             ->where('occurred_at', '>=', $start)
-            ->groupBy(DB::raw("to_char(occurred_at, 'YYYY-MM')"), 'movement_type')
-            ->get([DB::raw("to_char(occurred_at, 'YYYY-MM') as ym"), 'movement_type', DB::raw('SUM(quantity) as qty')])
+            ->groupBy(DB::raw("to_char(" . AppTime::sqlLocal('occurred_at') . ", 'YYYY-MM')"), 'movement_type')
+            ->get([
+                DB::raw("to_char(" . AppTime::sqlLocal('occurred_at') . ", 'YYYY-MM') as ym"),
+                'movement_type',
+                DB::raw('SUM(quantity) as qty'),
+            ])
             ->groupBy('ym');
 
         return collect(range(0, $months - 1))->map(function ($i) use ($start, $counts, $qty) {
@@ -176,7 +185,7 @@ class ReportService
             'balances' => [$title, ['Ürün', 'SKU', 'Birim', 'Depo', 'Kullanılabilir', 'Karantina', 'Hasarlı', 'Rezerve', 'Birim fiyat', 'Kullanılabilir değer'],
                 $this->balanceRows($companyId)],
             'lots' => [$title, ['Ürün', 'SKU', 'Depo', 'Durum', 'Lot', 'SKT', 'Kalan gün', 'Miktar'], $this->lotRows($companyId)],
-            'movements' => [$title, ['Tarih', 'Ürün', 'SKU', 'Depo', 'Hareket', 'Durum', 'Miktar', 'Lot', 'SKT', 'Kayıt', 'Kullanıcı', 'Not'],
+            'movements' => [$title, ['Tarih', 'Ürün', 'SKU', 'Depo', 'Hareket', 'Durum', 'Miktar', 'Birim', 'Lot', 'SKT', 'Kayıt', 'Kullanıcı', 'Not'],
                 $this->movementRows($companyId, $params['from'] ?? null, $params['to'] ?? null)],
             'risk' => [$title, ['Ürün', 'SKU', 'Kullanılabilir', 'Yolda', 'Günlük tüketim', 'Stok günü', 'Tedarik (gün)', 'Risk', 'Seviye', 'Neden', 'Öneri', 'Açıklama'],
                 $this->risk->assessCompany($companyId)->sortByDesc('risk_score')->map(fn($r) => [
@@ -252,7 +261,7 @@ class ReportService
     {
         $products   = WarehouseProduct::forCompany($companyId)->get()->keyBy('id');
         $warehouses = Warehouse::forCompany($companyId)->pluck('name', 'id');
-        $today      = Carbon::today();
+        $today      = AppTime::today();
 
         return StockMovement::where('company_id', $companyId)
             ->groupBy('product_id', 'warehouse_id', 'bucket', 'lot_number', 'expiry_date')
@@ -276,15 +285,40 @@ class ReportService
         return StockMovement::where('company_id', $companyId)
             ->when($from, fn($q) => $q->where('occurred_at', '>=', Carbon::parse($from)->startOfDay()))
             ->when($to, fn($q) => $q->where('occurred_at', '<=', Carbon::parse($to)->endOfDay()))
-            ->with(['product:id,name,sku', 'warehouse:id,name', 'record:id,record_number', 'createdBy:id,name'])
+            // Kayıt silinmiş olsa bile numarası görünsün; satır numarasız kalmamalı
+            ->with([
+                'product:id,name,sku,unit',
+                'warehouse:id,name',
+                'record' => fn($q) => $q->withTrashed()->select('id', 'record_number', 'deleted_at'),
+                'createdBy:id,name',
+            ])
             ->orderBy('occurred_at')->orderBy('created_at')
             ->limit(50000)
             ->get()
             ->map(fn(StockMovement $m) => [
                 $m->occurred_at?->format('Y-m-d H:i'), $m->product?->name, $m->product?->sku, $m->warehouse?->name,
                 $labels[$m->movement_type] ?? $m->movement_type, self::BUCKET_TR[$m->bucket] ?? $m->bucket, $m->quantity,
-                $m->lot_number, $m->expiry_date?->toDateString(), $m->record?->record_number, $m->createdBy?->name, $m->note,
+                $m->product?->unit ?: 'adet',
+                $m->lot_number, $m->expiry_date?->toDateString(),
+                $this->kayitNo($m), $m->createdBy?->name, $m->note,
             ])->all();
+    }
+
+    /**
+     * Defter satırının kayıt numarası.
+     *
+     * Ürün kartından girilen açılış stoğunun bağlı kaydı yoktur; silinmiş kayıtlarda da
+     * ilişki boş döner. İki durumda da sütun boş kalıyordu, satır takip edilemiyordu.
+     */
+    private function kayitNo(StockMovement $m): string
+    {
+        if ($m->record) {
+            return $m->record->deleted_at
+                ? $m->record->record_number . ' (silinmiş)'
+                : (string) $m->record->record_number;
+        }
+
+        return $m->movement_type === 'opening' ? 'Açılış stoğu' : 'Kayıtsız';
     }
 
     private function purchaseOrderRows(string $companyId): array

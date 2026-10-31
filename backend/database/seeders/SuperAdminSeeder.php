@@ -35,7 +35,7 @@ class SuperAdminSeeder extends Seeder
             [
                 'name'              => 'Super Admin',
                 'email'             => 'superadmin@bytepanel.com',
-                'password'          => Hash::make('BytePanel2024'),
+                'password'          => Hash::make('BytePanel@2024!'),
                 'status'            => 'active',
                 'email_verified_at' => now(),
                 'company_id'        => null,

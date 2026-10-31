@@ -17,6 +17,7 @@ use App\Services\Stock\ReportService;
 use App\Services\Stock\WarehouseKpiService;
 use App\Services\Stock\WhatIfService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -30,6 +31,9 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
  */
 class StockController extends Controller
 {
+    /** Küsurat kabul etmeyen, sayılarak takip edilen birimler. */
+    private const TAM_SAYI_BIRIMLER = ['adet', 'ad', 'piece', 'pcs', 'koli', 'kutu', 'paket', 'palet', 'çuval', 'rulo', 'top', 'düzine'];
+
     private const VIEW_PERM = 'warehouse.records.view';
     private const EDIT_PERM = 'warehouse.records.edit';
 
@@ -397,6 +401,7 @@ class StockController extends Controller
     public function createTransfers(Request $request, TransferSuggestionService $transfers): JsonResponse
     {
         $this->authorizePerm($request, 'warehouse.records.create');
+        $companyId = $request->user()->company_id;
 
         $data = $request->validate([
             'lines'                     => ['required', 'array', 'min:1'],
@@ -405,7 +410,15 @@ class StockController extends Controller
             'lines.*.to_warehouse_id'   => ['required', 'uuid'],
             'lines.*.quantity'          => ['required', 'numeric', 'gt:0'],
             'lines.*.reason'            => ['nullable', 'string', 'max:500'],
-        ], ['lines.required' => 'En az bir öneri seçin.']);
+        ], [
+            'lines.required'      => 'En az bir öneri seçin.',
+            'lines.*.quantity.gt' => 'Transfer miktarı 0\'dan büyük olmalıdır.',
+        ]);
+
+        // Birim ve kaynak stok, emir açılmadan doğrulanır. Eskiden küsuratlı miktar
+        // ("50,5 adet") ve kaynaktan fazla miktar kabul ediliyor, sorun ancak
+        // onay anında ortaya çıkıyordu.
+        $this->validateTransferLines($companyId, $data['lines']);
 
         $records = $transfers->createOrders($request->user(), $data['lines']);
 
@@ -414,6 +427,56 @@ class StockController extends Controller
             'data'    => $records->map(fn($r) => ['id' => $r->id, 'record_number' => $r->record_number]),
             'message' => "{$records->count()} transfer kaydı oluşturuldu. Depolama listesinden onaylayınca stok taşınır.",
         ], 201);
+    }
+
+    /**
+     * Transfer satırlarını doğrular: sayılabilir birimde küsurat olmaz ve
+     * kaynak depodaki kullanılabilir stok aşılamaz.
+     *
+     * @param array<int, array{product_id: string, from_warehouse_id: string, quantity: float|string}> $lines
+     */
+    private function validateTransferLines(string $companyId, array $lines): void
+    {
+        $hatalar = [];
+
+        foreach ($lines as $i => $line) {
+            $product = WarehouseProduct::forCompany($companyId)->find($line['product_id']);
+            if (!$product) {
+                $hatalar["lines.{$i}.product_id"] = ['Ürün bulunamadı.'];
+                continue;
+            }
+
+            $miktar = (float) $line['quantity'];
+            $birim  = $product->unit ?: 'adet';
+
+            if (in_array(mb_strtolower(trim($birim)), self::TAM_SAYI_BIRIMLER, true)
+                && abs($miktar - round($miktar)) > 0.0001) {
+                $hatalar["lines.{$i}.quantity"][] =
+                    "{$product->name}: \"{$birim}\" biriminde küsuratlı transfer yapılamaz. Tam sayı yazın.";
+            }
+
+            $mevcut = (float) StockMovement::forCompany($companyId)
+                ->where('product_id', $product->id)
+                ->where('warehouse_id', $line['from_warehouse_id'])
+                ->where('bucket', StockMovement::BUCKET_AVAILABLE)
+                ->sum('quantity');
+
+            if ($miktar - $mevcut > 0.0005) {
+                $depo = Warehouse::forCompany($companyId)->find($line['from_warehouse_id'])?->name ?? 'Kaynak depo';
+                $hatalar["lines.{$i}.quantity"][] =
+                    "{$product->name}: {$depo} içinde {$this->sayi($mevcut)} {$birim} var, {$this->sayi($miktar)} {$birim} transfer edilemez.";
+            }
+        }
+
+        if ($hatalar) {
+            throw ValidationException::withMessages($hatalar);
+        }
+    }
+
+    /** Miktarı gereksiz sıfırlar olmadan yazar: 50.000 → 50 */
+    private function sayi(float $n): string
+    {
+        return rtrim(rtrim(number_format($n, 3, '.', ''), '0'), '.');
     }
 
     // ─── What-if simülasyonu ────────────────────────────────────────
@@ -434,9 +497,14 @@ class StockController extends Controller
             'scenarios.*.supplier_id'          => ['nullable', 'uuid', Rule::exists('suppliers', 'id')->where('company_id', $companyId)],
             'scenarios.*.category'             => ['nullable', 'string', 'max:100'],
         ], [
-            'scenarios.max'                          => 'En fazla 3 senaryo karşılaştırılabilir.',
-            'scenarios.*.demand_change_pct.min'      => 'Talep en fazla %90 düşürülebilir.',
-            'scenarios.*.lead_time_extra_days.min'   => 'Tedarik süresi en fazla 60 gün kısaltılabilir.',
+            'scenarios.max'                           => 'En fazla 3 senaryo karşılaştırılabilir.',
+            'scenarios.*.demand_change_pct.min'       => 'Talep en fazla %90 düşürülebilir.',
+            'scenarios.*.demand_change_pct.max'       => 'Talep en fazla %300 artırılabilir.',
+            'scenarios.*.lead_time_extra_days.min'    => 'Tedarik süresi en fazla 60 gün kısaltılabilir.',
+            'scenarios.*.lead_time_extra_days.max'    => 'Tedarik süresine en fazla 120 gün eklenebilir.',
+            'scenarios.*.lead_time_extra_days.integer'=> 'Tedarik süresi tam gün olmalıdır.',
+            'scenarios.*.safety_change_pct.min'       => 'Güvenlik stoğu en fazla %100 düşürülebilir.',
+            'scenarios.*.safety_change_pct.max'       => 'Güvenlik stoğu en fazla %300 artırılabilir.',
         ]);
 
         return response()->json([

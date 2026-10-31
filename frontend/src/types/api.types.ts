@@ -110,10 +110,11 @@ export interface WarehouseRecord extends BaseRecord {
   operator_id?: string
   operator?: import('./auth.types').User
   // Kalite kontrol — null: QC öncesi eski kayıt
-  qc_status?: 'pending' | 'passed' | null
+  qc_status?: 'pending' | 'passed' | 'rejected' | null
   qc_has_photo?: boolean
   qc_checked_at?: string | null
   qc_checked_by_name?: string | null
+  qc_note?: string | null
   has_signature?: boolean
   signed_by_name?: string | null
   signed_at?: string | null

@@ -99,6 +99,31 @@ class User extends Authenticatable
         );
     }
 
+    /**
+     * Platform ekibinin şirket paneline bağlandığı jetonun işaretçisi.
+     * Ability listesi sunucuda belirlenir, bu yüzden taklit edilemez.
+     */
+    public const IMPERSONATION_ABILITY = 'platform:impersonation';
+
+    /**
+     * İstek, platform ekibinin şirkete bağlanmış oturumundan mı geliyor?
+     * tokenCan() yerine doğrudan listeye bakılır: '*' ability'si her kontrolü
+     * geçirdiği için ayrım yapmazdı.
+     */
+    public function isImpersonatedByPlatform(): bool
+    {
+        $token = $this->currentAccessToken();
+
+        return $token !== null
+            && in_array(self::IMPERSONATION_ABILITY, (array) ($token->abilities ?? []), true);
+    }
+
+    /** Platform ekibi adına hareket eden bir istek mi: doğrudan platform kullanıcısı ya da bağlanmış oturum. */
+    public function actsAsPlatform(): bool
+    {
+        return $this->isPlatformUser() || $this->isImpersonatedByPlatform();
+    }
+
     public function isCompanyOwner(): bool
     {
         return $this->roles()->where('level', 2)->exists();
@@ -128,25 +153,55 @@ class User extends Authenticatable
         );
     }
 
+    /**
+     * Yalnızca platform tarafına ait izin önekleri.
+     * Şirket sahibi kendi şirketinde sınırsızdır, ama bu izinleri asla almaz:
+     * aksi halde tüm şirketleri listeleyip başka şirketlerin verisine erişebilir.
+     */
+    private const PLATFORM_ONLY_PREFIXES = ['platform.', 'system.', 'companies.'];
+
+    private static function isPlatformOnlyPermission(string $permission): bool
+    {
+        foreach (self::PLATFORM_ONLY_PREFIXES as $prefix) {
+            if (str_starts_with($permission, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function hasPermission(string $permission): bool
     {
-        if ($this->isSuperAdmin() || $this->isCompanyOwner()) {
+        if ($this->isSuperAdmin()) {
             return true;
         }
+
+        if ($this->isCompanyOwner() && !self::isPlatformOnlyPermission($permission)) {
+            return true;
+        }
+
         return $this->getPermissions()->contains($permission);
     }
 
     public function hasAnyPermission(array $permissions): bool
     {
-        if ($this->isSuperAdmin() || $this->isCompanyOwner()) {
+        if ($this->isSuperAdmin()) {
             return true;
         }
+
+        $isOwner   = $this->isCompanyOwner();
         $userPerms = $this->getPermissions();
+
         foreach ($permissions as $permission) {
+            if ($isOwner && !self::isPlatformOnlyPermission($permission)) {
+                return true;
+            }
             if ($userPerms->contains($permission)) {
                 return true;
             }
         }
+
         return false;
     }
 

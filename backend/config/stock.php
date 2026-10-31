@@ -47,14 +47,19 @@ return [
         'large_record_min_qty' => 10,
         'damage_min_ratio'     => 2.0,  // son 30 gün hasar >= önceki 30 gün ortalaması × 2
         'damage_min_qty'       => 5,
-        'count_variance_pct'   => 10,   // sayım farkı >= %10
-        'count_variance_min'   => 5,
+        // Sayım farkı eşiği Depo KPI'daki doğruluk toleransıyla aynı olmalı (±%2):
+        // KPI %5,6 farkı "hatalı sayım" sayarken anomali taraması %10 altını atlıyordu.
+        'count_variance_pct'   => 2,
+        'count_variance_min'   => 2,
         'frequent_adjustments' => 3,    // 30 günde >= 3 azalış düzeltmesi
         'user_min_events'      => 3,
         'user_sigma'           => 2.0,
         'business_timezone'    => 'Europe/Istanbul',
         'business_hours'       => [7, 22], // [başlangıç, bitiş) saat
         'notify_min_severity'  => 70,
+        // Stoğun tamamına yakınının tek kayıtla çıkması
+        'stock_wipe_ratio'     => 0.9,  // çıkış, o andaki stoğun >= %90'ı
+        'stock_wipe_min_qty'   => 10,
     ],
 
     // Risk seviyesi eşikleri (skor >= eşik)

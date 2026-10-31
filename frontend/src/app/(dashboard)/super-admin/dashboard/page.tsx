@@ -20,7 +20,7 @@ export default function SuperAdminDashboard() {
     <div className="space-y-6">
       <PageHeader
         title="Sistem Yönetimi"
-        description="BytePanel süper yönetici paneli — tüm sistem istatistikleri"
+        description="Argus Tech süper yönetici paneli — tüm sistem istatistikleri"
         breadcrumbs={[{ label: 'Super Admin' }, { label: 'Dashboard' }]}
       />
 

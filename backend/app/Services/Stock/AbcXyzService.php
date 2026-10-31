@@ -2,6 +2,8 @@
 
 namespace App\Services\Stock;
 
+use App\Support\AppTime;
+
 use App\Models\StockMovement;
 use App\Models\WarehouseProduct;
 use Illuminate\Support\Carbon;
@@ -16,6 +18,9 @@ use Illuminate\Support\Facades\DB;
  */
 class AbcXyzService
 {
+    /** Sınıflamanın güvenilir sayılması için gereken en az hafta sayısı. */
+    private const MIN_HAFTA = 4;
+
     private const ABC_LIMITS = ['A' => 80, 'B' => 95];
     private const XYZ_LIMITS = ['X' => 0.5, 'Y' => 1.0];
 
@@ -36,10 +41,21 @@ class AbcXyzService
 
     public function analyze(string $companyId, int $days = 90, ?string $warehouseId = null): array
     {
-        $today    = Carbon::today();
+        $today    = AppTime::today();
         $from     = $today->copy()->subDays($days - 1);
         $weeks    = max(1, intdiv($days, 7));
-        $products = WarehouseProduct::forCompany($companyId)->active()->with('defaultSupplier:id,default_lead_time_days')->get()->keyBy('id');
+        // Depo seçiliyse yalnız o depoda hareket görmüş ürünler analize girer.
+        // Aksi hâlde şirketin tüm ürünleri listeye düşer; hiç hareketi olmadığı için
+        // hepsi CZ sınıfına yığılır ve depo filtresi anlamsız kalırdı.
+        $products = WarehouseProduct::forCompany($companyId)
+            ->active()
+            ->when($warehouseId, fn($q) => $q->whereIn('id', StockMovement::where('company_id', $companyId)
+                ->where('warehouse_id', $warehouseId)
+                ->distinct()
+                ->pluck('product_id')))
+            ->with('defaultSupplier:id,default_lead_time_days')
+            ->get()
+            ->keyBy('id');
 
         // Günlük tüketim miktarı ve değeri (iptal edilmemiş çıkışlar)
         $daily = StockMovement::where('stock_movements.company_id', $companyId)
@@ -58,8 +74,11 @@ class AbcXyzService
             ])
             ->groupBy('product_id');
 
-        // Ürünün ilk hareketi: var olmadığı haftalar "sıfır talep" sayılıp değişkenliği şişirmesin
+        // Ürünün ilk ÇIKIŞI (ilk satış). Mal girişinden satışa kadar geçen haftalar
+        // "talep 0" sayılırsa düzenli satan ürün dalgalı (Y/Z) görünür ve fazla
+        // güvenlik stoğu önerilir; o yüzden sayaç ilk tüketimden başlar.
         $firstMove = StockMovement::where('company_id', $companyId)
+            ->where('movement_type', 'stock_out')
             ->when($warehouseId, fn($q) => $q->where('warehouse_id', $warehouseId))
             ->groupBy('product_id')
             ->get(['product_id', DB::raw('MIN(occurred_at) as first_at')])
@@ -84,9 +103,14 @@ class AbcXyzService
                     $weekly[$idx] += (float) $r->qty;
                 }
             }
-            $mean = array_sum($weekly) / $activeWeeks;
-            $std  = sqrt(array_sum(array_map(fn($v) => ($v - $mean) ** 2, $weekly)) / $activeWeeks);
-            $cv   = $mean > 0 ? $std / $mean : null;
+            $mean    = array_sum($weekly) / $activeWeeks;
+            $std     = sqrt(array_sum(array_map(fn($v) => ($v - $mean) ** 2, $weekly)) / $activeWeeks);
+            $yetersiz = $activeWeeks < self::MIN_HAFTA;
+
+            // Tek haftalık veride sapma zorunlu olarak 0 çıkar; bu "çok düzenli" demek
+            // değil, "bilinmiyor" demektir. Eskiden CV 0 yazılıp ürün X sınıfına
+            // (en düzenli) giriyordu. Yetersiz geçmişte CV üretilmez; sınıf Z olur.
+            $cv = ($yetersiz || $mean <= 0) ? null : $std / $mean;
 
             // Günlük sapma (güvenlik stoğu için): haftalık sapmadan türet
             $dailyStd = $std / sqrt(7);
@@ -103,7 +127,7 @@ class AbcXyzService
                 'weekly_std'     => round($std, 2),
                 'cv'             => $cv !== null ? round($cv, 2) : null,
                 'history_weeks'  => $activeWeeks,
-                'insufficient_history' => $activeWeeks < 4,
+                'insufficient_history' => $yetersiz,
                 'daily_std'      => $dailyStd,
                 'daily_mean'     => $qty / $activeDays,
                 'lead_time'      => $p->lead_time_days ?? $p->defaultSupplier?->default_lead_time_days ?? (int) config('stock.default_lead_time_days', 7),
@@ -123,8 +147,13 @@ class AbcXyzService
             $xyz = $r['cv'] === null ? 'Z' : ($r['cv'] <= self::XYZ_LIMITS['X'] ? 'X' : ($r['cv'] <= self::XYZ_LIMITS['Y'] ? 'Y' : 'Z'));
 
             [$service, $z] = self::SERVICE[$abc];
-            $recommended   = $r['daily_mean'] > 0 ? ceil($z * $r['daily_std'] * sqrt($r['lead_time'])) : 0.0;
             $class         = $abc . $xyz;
+
+            // Tek haftalık veride sapma 0 çıkar ve öneri 0 görünür; bu bir tavsiye değil,
+            // veri eksikliğidir. Yetersiz geçmişte öneri üretilmez (null).
+            $recommended = $r['insufficient_history'] || $r['daily_mean'] <= 0
+                ? null
+                : ceil($z * $r['daily_std'] * sqrt($r['lead_time']));
 
             return [
                 ...collect($r)->except(['daily_std', 'daily_mean'])->all(),
@@ -135,7 +164,7 @@ class AbcXyzService
                 'class'              => $class,
                 'service_level'      => $service,
                 'recommended_safety' => $recommended,
-                'safety_gap'         => round($recommended - $r['safety_stock'], 3),
+                'safety_gap'         => $recommended === null ? null : round($recommended - $r['safety_stock'], 3),
                 'policy'             => self::POLICIES[$class],
             ];
         });
@@ -149,7 +178,7 @@ class AbcXyzService
                 'total_value' => round($totalValue, 2),
                 'a_share'     => round($rows->where('abc', 'A')->sum('value_share'), 1),
                 'a_count'     => $rows->where('abc', 'A')->count(),
-                'safety_gaps' => $rows->filter(fn($r) => abs($r['safety_gap']) >= 1)->count(),
+                'safety_gaps' => $rows->filter(fn($r) => $r['safety_gap'] !== null && abs($r['safety_gap']) >= 1)->count(),
             ],
             'policies'  => self::POLICIES,
             'limits'    => ['abc' => self::ABC_LIMITS, 'xyz' => self::XYZ_LIMITS, 'service' => collect(self::SERVICE)->map(fn($s) => $s[0])],
@@ -159,7 +188,11 @@ class AbcXyzService
     /** Önerilen güvenlik stoklarını ürün kartlarına yazar (kullanıcı onayıyla). */
     public function applySafetyStock(string $companyId, array $productIds, int $days = 90): int
     {
-        $rows = $this->analyze($companyId, $days)['rows']->whereIn('product_id', $productIds);
+        // Önerisi olmayan ürünler atlanır; yoksa yetersiz veri yüzünden mevcut
+        // güvenlik stoğu sessizce sıfırlanırdı.
+        $rows = $this->analyze($companyId, $days)['rows']
+            ->whereIn('product_id', $productIds)
+            ->filter(fn($r) => $r['recommended_safety'] !== null);
 
         foreach ($rows as $r) {
             WarehouseProduct::forCompany($companyId)->whereKey($r['product_id'])

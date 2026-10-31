@@ -31,6 +31,7 @@ interface SupplierPerf {
   score: number | null
   grade: 'A' | 'B' | 'C' | 'D' | null
   lead_time_gap: number | null
+  lead_time_reliable: boolean
   insights: string[]
 }
 
@@ -189,11 +190,17 @@ export function SupplierPerformanceTab() {
                   <td className="px-3 py-2.5 text-right">{r.orders}{r.open_overdue > 0 && <span className="block text-[11px] text-red-600">{r.open_overdue} gecikmede</span>}</td>
                   <td className="px-3 py-2.5 text-right">
                     {num(r.declared_lead_time)} / <strong className={cn(gapWarn && (r.lead_time_gap! > 0 ? 'text-red-600' : 'text-green-600'))}>{num(r.avg_lead_time)}</strong> gün
-                    {gapWarn && (
+                    {/* Az sayıda teslimattan ya da 0 güne yakın ortalamadan çıkan süre
+                        planlamayı bozar; düğme yalnız güvenilir veride açılır. */}
+                    {gapWarn && (r.lead_time_reliable ? (
                       <button onClick={() => leadMutation.mutate(r.supplier_id)} disabled={leadMutation.isPending} className="block ml-auto mt-1 text-[11px] text-blue-600 hover:underline disabled:opacity-50">
                         Gerçek süreyi kullan
                       </button>
-                    )}
+                    ) : (
+                      <span className="block mt-1 text-[11px] text-zinc-400" title="Güvenilir ortalama için en az 3 teslim alınmış sipariş ve 1 günden uzun ortalama gerekir">
+                        Veri yetersiz
+                      </span>
+                    ))}
                   </td>
                   <td className="px-3 py-2.5 text-right">{pct(r.on_time_rate)}</td>
                   <td className="px-3 py-2.5 text-right">{num(r.avg_delay_days, ' gün')}</td>

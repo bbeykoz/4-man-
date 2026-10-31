@@ -2,6 +2,8 @@
 
 namespace App\Services\Stock;
 
+use App\Support\AppTime;
+
 use App\Models\Modules\WarehouseRecord;
 use App\Models\PurchaseOrder;
 use App\Models\StockMovement;
@@ -26,7 +28,7 @@ class WarehouseKpiService
 
     public function report(string $companyId, int $periodDays = 30, ?string $warehouseId = null): array
     {
-        $today = Carbon::today();
+        $today = AppTime::today();
         $cur   = [$today->copy()->subDays($periodDays - 1)->startOfDay(), $today->copy()->endOfDay()];
         $prev  = [$cur[0]->copy()->subDays($periodDays), $cur[0]->copy()->subSecond()];
 
@@ -100,7 +102,7 @@ class WarehouseKpiService
         // Dönem, işlemin iş tarihine (transaction_date) göre; yoksa stoğa işlendiği gün
         $records = WarehouseRecord::where('company_id', $companyId)
             ->whereNotNull('product_id')->whereNotNull('posted_at')->whereNull('reversed_at')
-            ->whereRaw('COALESCE(transaction_date, DATE(posted_at)) BETWEEN ? AND ?', [$from->toDateString(), $to->toDateString()])
+            ->whereRaw('COALESCE(transaction_date, DATE(' . AppTime::sqlLocal('posted_at') . ')) BETWEEN ? AND ?', [$from->toDateString(), $to->toDateString()])
             ->when($warehouseId, fn($q) => $q->where(fn($x) => $x->where('warehouse_id', $warehouseId)->orWhere('to_warehouse_id', $warehouseId)))
             ->get(['id', 'record_number', 'type', 'product_id', 'warehouse_id', 'quantity', 'system_quantity', 'created_at', 'posted_at', 'created_by']);
 

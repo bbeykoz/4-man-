@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\V1\Modules\ShippingController;
 use App\Http\Controllers\Api\V1\Modules\PurchaseOrderController;
 use App\Http\Controllers\Api\V1\Modules\StockAnomalyController;
 use App\Http\Controllers\Api\V1\Modules\StockController;
+use App\Http\Controllers\Api\V1\Modules\StockReservationController;
 use App\Http\Controllers\Api\V1\Modules\SupplierController;
 use App\Http\Controllers\Api\V1\Modules\WarehouseController;
 use App\Http\Controllers\Api\V1\Modules\WarehouseProductController;
@@ -308,6 +309,12 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
             Route::post('abc-xyz/apply-safety',     [StockController::class, 'applySafetyStock']);
             Route::get('reports/overview',          [StockController::class, 'reportOverview']);
             Route::get('reports/export',            [StockController::class, 'reportExport']);
+
+            // Booked: siparişe ayrılan stok
+            Route::get('reservations',                   [StockReservationController::class, 'index']);
+            Route::post('reservations/{id}/deliver',     [StockReservationController::class, 'deliver']);
+            Route::post('reservations/{id}/cancel',      [StockReservationController::class, 'cancel']);
+            Route::post('reservations/{id}/top-up',      [StockReservationController::class, 'topUp']);
         });
 
         // Satın alma: tedarikçiler, siparişler, otomatik öneriler

@@ -4,6 +4,7 @@
 // Değişenler: import yolu @/components/ui/*, içerik Türkçe ve depo paneline göre.
 // Avatar menüsü kaldırıldı — tanıtım sayfasında oturum açmış kullanıcı yok, yerine giriş düğmesi.
 import { cn } from '@/lib/utils';
+import { BrandMark } from '@/components/common/BrandMark'
 import {
   Popover,
   PopoverAnchor,
@@ -29,7 +30,7 @@ export interface NavigationProps {
 }
 
 export function Navigation({
-  brandName = 'BytePanel',
+  brandName = 'Argus Tech',
   panelUrl = '#',
 }: NavigationProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -53,9 +54,7 @@ export function Navigation({
                 </PopoverTrigger>
 
                 <a href="#" className="flex items-center gap-1.5">
-                  <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-blue-600 to-violet-600 text-xs font-bold text-white">
-                    BP
-                  </span>
+                  <BrandMark className="h-8 w-8" />
                   <span className="text-lg font-bold tracking-tight text-neutral-900 dark:text-white">
                     {brandName}
                   </span>

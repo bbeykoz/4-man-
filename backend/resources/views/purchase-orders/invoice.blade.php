@@ -77,7 +77,7 @@
   @endif
 
   <div class="footer">
-    Bu fatura, BytePanel Satın Alma modülünde kayıtlı sipariş verilerinden otomatik oluşturulmuştur. Oluşturulma: {{ now()->format('d.m.Y H:i') }}
+    Bu fatura, Argus Tech Satın Alma modülünde kayıtlı sipariş verilerinden otomatik oluşturulmuştur. Oluşturulma: {{ now()->format('d.m.Y H:i') }}
   </div>
 </body>
 </html>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Modules;
 use App\Http\Controllers\Controller;
 use App\Models\Warehouse;
 use App\Models\WarehouseProduct;
+use App\Models\StockMovement;
 use App\Services\Stock\StockLedgerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,14 @@ use Illuminate\Validation\Rule;
 
 class WarehouseProductController extends Controller
 {
+    /** Kova adlarının Türkçesi; silme uyarısında kullanılır. */
+    private const BUCKET_ADLARI = [
+        'available'  => 'kullanılabilir',
+        'reserved'   => 'rezerve',
+        'quarantine' => 'karantina',
+        'damaged'    => 'hasarlı',
+    ];
+
     public function __construct(private readonly StockLedgerService $ledger) {}
 
     private const VIEW_PERM   = 'warehouse.records.view';
@@ -80,8 +89,13 @@ class WarehouseProductController extends Controller
 
         $data = $request->validate([
             'name'          => ['required', 'string', 'max:255'],
-            'sku'           => ['nullable', 'string', 'max:100'],
-            'barcode'       => ['nullable', 'string', 'max:100'],
+            // SKU şirket içinde benzersiz: aynı kod iki üründe stoğu karıştırır
+            'sku'           => ['nullable', 'string', 'max:100', Rule::unique('warehouse_products', 'sku')
+                ->where('company_id', $request->user()->company_id)
+                ->whereNull('deleted_at')],
+            'barcode'       => ['nullable', 'string', 'max:100', Rule::unique('warehouse_products', 'barcode')
+                ->where('company_id', $request->user()->company_id)
+                ->whereNull('deleted_at')],
             'unit'          => ['nullable', 'string', 'max:20'],
             'category'      => ['nullable', 'string', 'max:100'],
             'description'   => ['nullable', 'string', 'max:2000'],
@@ -96,6 +110,9 @@ class WarehouseProductController extends Controller
             'current_stock' => ['nullable', 'numeric', 'min:0'], // açılış stoğu
             'warehouse_id'  => ['nullable', 'uuid'],               // açılış stoğunun deposu
             'is_active'     => ['nullable', 'boolean'],
+        ], [
+            'sku.unique'     => 'Bu SKU başka bir üründe kullanılıyor. SKU kodu benzersiz olmalıdır.',
+            'barcode.unique' => 'Bu barkod başka bir üründe kullanılıyor.',
         ]);
 
         $user = $request->user();
@@ -163,8 +180,14 @@ class WarehouseProductController extends Controller
 
         $data = $request->validate([
             'name'          => ['sometimes', 'required', 'string', 'max:255'],
-            'sku'           => ['nullable', 'string', 'max:100'],
-            'barcode'       => ['nullable', 'string', 'max:100'],
+            'sku'           => ['nullable', 'string', 'max:100', Rule::unique('warehouse_products', 'sku')
+                ->ignore($product->id)
+                ->where('company_id', $request->user()->company_id)
+                ->whereNull('deleted_at')],
+            'barcode'       => ['nullable', 'string', 'max:100', Rule::unique('warehouse_products', 'barcode')
+                ->ignore($product->id)
+                ->where('company_id', $request->user()->company_id)
+                ->whereNull('deleted_at')],
             'unit'          => ['nullable', 'string', 'max:20'],
             'category'      => ['nullable', 'string', 'max:100'],
             'description'   => ['nullable', 'string', 'max:2000'],
@@ -177,6 +200,9 @@ class WarehouseProductController extends Controller
             'order_multiple'=> ['nullable', 'numeric', 'gt:0'],
             'reorder_blocked' => ['nullable', 'boolean'],
             'is_active'     => ['nullable', 'boolean'],
+        ], [
+            'sku.unique'     => 'Bu SKU başka bir üründe kullanılıyor. SKU kodu benzersiz olmalıdır.',
+            'barcode.unique' => 'Bu barkod başka bir üründe kullanılıyor.',
         ]);
 
         if (array_key_exists('reorder_blocked', $data)) {
@@ -200,6 +226,31 @@ class WarehouseProductController extends Controller
         abort_unless($request->user()->hasPermission(self::DELETE_PERM), 403);
 
         $product = WarehouseProduct::forCompany($request->user()->company_id)->findOrFail($id);
+
+        // Stoğu duran ürün silinemez: defter satırları yerinde kalıp depo toplamlarını,
+        // stok değerini ve devir hızını şişirirdi. Önce stok sıfırlanmalı (çıkış,
+        // transfer ya da hasar kaydı) veya ürün pasife alınmalı.
+        $buckets = StockMovement::forCompany($product->company_id)
+            ->where('product_id', $product->id)
+            ->groupBy('bucket')
+            ->havingRaw('ABS(SUM(quantity)) > 0.0005')
+            ->get(['bucket', DB::raw('SUM(quantity) AS toplam')]);
+
+        if ($buckets->isNotEmpty()) {
+            $birim = $product->unit ?: 'adet';
+            $detay = $buckets
+                ->map(fn ($row) => (self::BUCKET_ADLARI[$row->bucket] ?? $row->bucket)
+                    . ' ' . rtrim(rtrim(number_format((float) $row->toplam, 3, '.', ''), '0'), '.')
+                    . ' ' . $birim)
+                ->implode(', ');
+
+            return response()->json([
+                'success' => false,
+                'message' => "Bu üründe stok var ({$detay}). Silmeden önce stoğu sıfırlayın ya da ürünü pasife alın.",
+                'code'    => 'PRODUCT_HAS_STOCK',
+            ], 422);
+        }
+
         $product->delete();
 
         return response()->json(['success' => true, 'message' => 'Ürün silindi.']);

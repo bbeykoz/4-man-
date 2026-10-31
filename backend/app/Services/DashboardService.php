@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Support\AppTime;
+
 use App\Models\ActivityLog;
 use App\Models\Company;
 use App\Models\Modules\AccountingRecord;
@@ -32,11 +34,11 @@ class DashboardService
                     'total'  => $usersQuery->count(),
                     'active' => $usersQuery->where('status', 'active')->count(),
                     'online_today' => $usersQuery
-                        ->whereDate('last_login_at', today())
+                        ->whereBetween('last_login_at', AppTime::dayRangeUtc())
                         ->count(),
                 ],
                 'modules' => \App\Models\Module::active()->count(),
-                'activity_today' => ActivityLog::whereDate('created_at', today())->count(),
+                'activity_today' => ActivityLog::whereBetween('created_at', AppTime::dayRangeUtc())->count(),
                 'companies_by_plan' => Company::select('plan_type', DB::raw('count(*) as total'))
                     ->groupBy('plan_type')
                     ->pluck('total', 'plan_type'),
@@ -74,12 +76,12 @@ class DashboardService
             // ── Accounting: today P&L ───────────────────────────────
             $dailyIncome = AccountingRecord::where('company_id', $companyId)
                 ->whereIn('type', $incomeTypes)
-                ->whereDate('created_at', today())
+                ->whereBetween('created_at', AppTime::dayRangeUtc())
                 ->sum('amount');
 
             $dailyExpense = AccountingRecord::where('company_id', $companyId)
                 ->whereIn('type', $expenseTypes)
-                ->whereDate('created_at', today())
+                ->whereBetween('created_at', AppTime::dayRangeUtc())
                 ->sum('amount');
 
             // ── Accounting: last 6 months chart ────────────────────
@@ -150,7 +152,7 @@ class DashboardService
 
             // ── Operations quick stats ───────────────────────────────
             $shippingInTransit = ShippingRecord::where('company_id', $companyId)->where('status', 'in_transit')->count();
-            $shippingToday     = ShippingRecord::where('company_id', $companyId)->whereDate('created_at', today())->count();
+            $shippingToday     = ShippingRecord::where('company_id', $companyId)->whereBetween('created_at', AppTime::dayRangeUtc())->count();
 
             $returnsInProgress = \App\Models\Modules\ReturnRecord::where('company_id', $companyId)->where('status', 'in_progress')->count();
             $returnsTotal      = \App\Models\Modules\ReturnRecord::where('company_id', $companyId)->count();
@@ -174,7 +176,7 @@ class DashboardService
                 'departments' => $deptCount,
                 'pending_tasks' => array_sum($pending),
                 'pending_by_module' => $pending,
-                'users_online_today' => User::where('company_id', $companyId)->whereDate('last_login_at', today())->count(),
+                'users_online_today' => User::where('company_id', $companyId)->whereBetween('last_login_at', AppTime::dayRangeUtc())->count(),
                 // Operations
                 'shipping'   => ['pending' => $pending['Nakliye'], 'in_transit' => $shippingInTransit, 'today' => $shippingToday],
                 'returns'    => ['pending' => $pending['İade'], 'in_progress' => $returnsInProgress, 'total' => $returnsTotal],
@@ -253,6 +255,25 @@ class DashboardService
                     $q->whereMonth('transaction_date', $m)->whereYear('transaction_date', $y);
                 })->sum('amount'), 2);
             $stats['draft']         = (clone $query)->where('status', 'draft')->count();
+        }
+
+        if (in_array($module, ['warehouse', 'warehouse_control'], true)) {
+            // Özet kartları hareket tipine göre sayar; ay sınırı Türkiye saatine göredir
+            [$monthStart, $monthEnd] = [
+                AppTime::now()->startOfMonth()->utc(),
+                AppTime::now()->endOfMonth()->utc(),
+            ];
+
+            $monthly = (clone $query)
+                ->whereBetween('created_at', [$monthStart, $monthEnd])
+                ->select('type', DB::raw('count(*) as total'))
+                ->groupBy('type')
+                ->pluck('total', 'type');
+
+            $stats['this_month']           = (int) $monthly->sum();
+            $stats['stock_in_this_month']  = (int) ($monthly['stock_in'] ?? 0) + (int) ($monthly['return_in'] ?? 0);
+            $stats['stock_out_this_month'] = (int) ($monthly['stock_out'] ?? 0);
+            $stats['by_type_this_month']   = $monthly;
         }
 
         return $stats;

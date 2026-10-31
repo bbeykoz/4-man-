@@ -6,6 +6,7 @@ import {
   Warehouse, Plus, Trash2, Search, X, FileSpreadsheet, Upload, Download, CheckCircle2,
   Package, ArrowDownCircle, ArrowUpCircle, ClipboardList, BoxSelect, Clock, Ban,
   UserCircle, Scan, Camera, AlertTriangle, Loader2, TrendingUp, Building2,
+  Eye,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -15,17 +16,19 @@ import { ConfirmModal } from '@/components/common/ConfirmModal'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { createRecordService } from '@/services/record.service'
 import { get, post, del, api } from '@/lib/api'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate, todayInput } from '@/lib/utils'
 import { PRIORITY_OPTIONS, ROLE_LEVELS } from '@/lib/constants'
 import { useAuthStore } from '@/store/auth.store'
 import type { WarehouseRecord, WarehouseProduct } from '@/types/api.types'
 import { createColumnHelper } from '@tanstack/react-table'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
-import { QcBadge, QcDetailModal, QualityCheckPrompt, createRecordWithQualityCheck } from '@/components/warehouse/QualityCheck'
+import { QcBadge, QcDetailModal, QualityCheckPrompt, createRecordWithQualityCheck, type QcAnswer } from '@/components/warehouse/QualityCheck'
+import { RecordDetailModal } from '@/components/warehouse/RecordDetailModal'
 import { SignatureCell } from '@/components/warehouse/SignaturePad'
 import { WarehouseFields } from '@/components/warehouse/WarehouseFields'
 import { WarehousesModal } from '@/components/warehouse/WarehousesModal'
 import { StockOverview } from '@/components/warehouse/StockOverview'
+import { BookedPanel } from '@/components/warehouse/BookedPanel'
 import { StockRiskPanel } from '@/components/warehouse/StockRiskPanel'
 import { PurchasingPanel } from '@/components/warehouse/purchasing/PurchasingPanel'
 import { RecordStockState } from '@/components/warehouse/RecordStockState'
@@ -615,7 +618,7 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
   const [toLocation, setToLocation]     = useState('')
   const [batchNumber, setBatchNumber]   = useState('')
   const [expiryDate, setExpiryDate]     = useState('')
-  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0])
+  const [transactionDate, setTransactionDate] = useState(todayInput())
   const [departmentId, setDepartmentId] = useState('')
   const [description, setDescription]   = useState('')
   const [warehouseId, setWarehouseId]   = useState('')
@@ -695,10 +698,16 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
   const [qcOpen, setQcOpen] = useState(false)
 
   const createMutation = useMutation({
-    mutationFn: ({ qcDone, photo }: { qcDone: boolean; photo: File | null }) =>
-      createRecordWithQualityCheck('/modules/warehouse', buildPayload(), qcDone, photo),
-    onSuccess: (_, { qcDone }) => {
-      toast.success(qcDone ? 'Kayıt oluşturuldu, kalite kontrol onaylandı.' : 'Kayıt oluşturuldu, kalite kontrol bekliyor.')
+    mutationFn: (answer: QcAnswer) =>
+      createRecordWithQualityCheck('/modules/warehouse', buildPayload(), answer),
+    onSuccess: (res, answer) => {
+      // Sunucu stok yetersizliği gibi uyarı döndüyse kullanıcıya hemen gösterilir
+      ;(res as { warnings?: string[] })?.warnings?.forEach(w => toast.warning(w, { duration: 8000 }))
+      toast.success({
+        passed:   'Kayıt oluşturuldu, kalite kontrol onaylandı.',
+        rejected: 'Kayıt oluşturuldu, ürün reddedildi. Stok karantinada.',
+        pending:  'Kayıt oluşturuldu, kalite kontrol bekliyor.',
+      }[answer.result])
       onSuccess(); onClose()
     },
     onError: (e) => { setQcOpen(false); toast.error(apiErrorMessage(e, 'Kayıt oluşturulamadı.')) },
@@ -741,7 +750,7 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
         <QualityCheckPrompt
           submitting={createMutation.isPending}
           onBack={() => setQcOpen(false)}
-          onSubmit={(qcDone, photo) => createMutation.mutate({ qcDone, photo })}
+          onSubmit={answer => createMutation.mutate(answer)}
         />
       )}
       <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
@@ -920,7 +929,7 @@ function WarehouseCreateModal({ onClose, defaultType, departments, onSuccess }: 
 
           <div>
             <label className={labelCls}>İşlem Tarihi</label>
-            <input type="date" className={inputCls} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} />
+            <input type="date" max={todayInput()} className={inputCls} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} />
           </div>
 
           {departments.length > 0 && (
@@ -1089,22 +1098,40 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [qcRecord, setQcRecord] = useState<WarehouseRecord | null>(null)
+  const [detailRecord, setDetailRecord] = useState<WarehouseRecord | null>(null)
 
-  const stokChips = [
-    { id: 'all',        label: 'Tümü' },
-    { id: 'stock_in',   label: 'Stok Girişi' },
-    { id: 'stock_out',  label: 'Stok Çıkışı' },
-    { id: 'adjustment', label: 'Düzeltme' },
-  ]
+  // Her sekme kendi hareket tiplerini kapsar. "Tümü", sekmenin kapsamı demektir;
+  // eskiden üç sekme de aynı listeyi gösteriyordu, yalnız düğmeler farklıydı.
+  const SEKME_KAPSAMI: Record<string, { id: string; label: string }[]> = {
+    // Depolama: tüm hareketler, her tip ayrı süzülebilir
+    depolama: [
+      { id: 'stock_in',    label: 'Stok Girişi' },
+      { id: 'stock_out',   label: 'Stok Çıkışı' },
+      { id: 'transfer',    label: 'Transfer' },
+      { id: 'return_in',   label: 'İade Girişi' },
+      { id: 'adjustment',  label: 'Düzeltme' },
+      { id: 'stock_count', label: 'Stok Sayımı' },
+      { id: 'damage',      label: 'Hasar' },
+      { id: 'inspection',  label: 'Denetim' },
+    ],
+    // Stok Kontrolü: stoğu düzelten ve denetleyen kayıtlar
+    stok: [
+      { id: 'adjustment',  label: 'Düzeltme' },
+      { id: 'stock_count', label: 'Stok Sayımı' },
+      { id: 'damage',      label: 'Hasar' },
+      { id: 'inspection',  label: 'Denetim' },
+    ],
+    // Yükleme – Boşaltma: mal giriş/çıkış ve transfer
+    yukleme: [
+      { id: 'stock_out', label: 'Yükleme' },
+      { id: 'stock_in',  label: 'Boşaltma' },
+      { id: 'transfer',  label: 'Transfer' },
+      { id: 'return_in', label: 'İade Girişi' },
+    ],
+  }
 
-  const yuklemeChips = [
-    { id: 'all',       label: 'Tümü' },
-    { id: 'stock_out', label: 'Yükleme' },
-    { id: 'stock_in',  label: 'Boşaltma' },
-    { id: 'transfer',  label: 'Transfer' },
-  ]
-
-  const chips = tabId === 'stok' ? stokChips : tabId === 'yukleme' ? yuklemeChips : []
+  const kapsam = SEKME_KAPSAMI[tabId] ?? []
+  const chips = kapsam.length > 0 ? [{ id: 'all', label: 'Tümü' }, ...kapsam] : []
 
   const defaultType = tabId === 'stok' ? 'stock_in' : tabId === 'yukleme' ? 'stock_in' : undefined
 
@@ -1113,10 +1140,13 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
 
   const { data, isLoading } = useQuery({
     queryKey: ['warehouse-records', tabId, page, search, typeChip, deptFilter],
+    // kapsam tabId'den türüyor, ayrı anahtar gerekmez
     queryFn: () => {
       const params: Record<string, any> = { page: page + 1, per_page: 15 }
       if (search) params.search = search
+      // Tek tip seçiliyse o tip; "Tümü" ise sekmenin kapsamındaki tipler
       if (typeChip !== 'all') params.type = typeChip
+      else if (kapsam.length > 0) params.types = kapsam.map(c => c.id).join(',')
       if (deptFilter) params.department_id = deptFilter
       return warehouseService.list(params)
     },
@@ -1157,17 +1187,27 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
   const columns = [
     col.accessor('record_number', {
       header: 'Kayıt No',
-      cell: info => <span className="text-xs font-mono text-zinc-500">{info.getValue()}</span>,
+      // Kayıt numarası detay penceresini açar
+      cell: info => (
+        <button
+          type="button"
+          onClick={() => setDetailRecord(info.row.original)}
+          title="Kayıt detayını gör"
+          className="text-xs font-mono text-blue-600 hover:underline dark:text-blue-400"
+        >
+          {info.getValue()}
+        </button>
+      ),
     }),
     col.accessor('title', {
       header: 'Ürün / Başlık',
       cell: info => (
-        <div>
-          <p className="font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[180px]">{info.getValue()}</p>
+        <button type="button" onClick={() => setDetailRecord(info.row.original)} className="text-left" title="Kayıt detayını gör">
+          <p className="font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[180px] hover:text-blue-600 dark:hover:text-blue-400">{info.getValue()}</p>
           {info.row.original.product_name && (
             <p className="text-xs text-zinc-400">{info.row.original.product_name}</p>
           )}
-        </div>
+        </button>
       ),
     }),
     col.accessor('type', {
@@ -1195,11 +1235,36 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
     }),
     col.accessor('quantity', {
       header: 'Miktar',
-      cell: info => (
-        <span className="text-sm text-zinc-700 dark:text-zinc-300">
-          {info.getValue() != null ? `${info.getValue()} ${info.row.original.unit ?? ''}`.trim() : '—'}
-        </span>
-      ),
+      // Düzeltme ve hasar gibi azaltan hareketlerde yön görünmeli; eskiden artış ile
+      // azalış listede aynı görünüyordu.
+      cell: info => {
+        const r = info.row.original
+        const q = info.getValue()
+        if (q == null) return <span className="text-sm text-zinc-700 dark:text-zinc-300">—</span>
+
+        const azalan = r.type === 'adjustment'
+          ? r.direction === 'decrease'
+          : ['stock_out', 'damage'].includes(r.type ?? '')
+        const artan = r.type === 'adjustment'
+          ? r.direction === 'increase'
+          : ['stock_in', 'return_in'].includes(r.type ?? '')
+
+        return (
+          <span className={cn(
+            'text-sm font-medium tabular-nums',
+            azalan ? 'text-red-600 dark:text-red-400'
+              : artan ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-zinc-700 dark:text-zinc-300',
+          )}>
+            {azalan ? '−' : artan ? '+' : ''}{`${q} ${r.unit ?? ''}`.trim()}
+            {r.type === 'adjustment' && r.direction && (
+              <span className="ml-1 text-[11px] font-normal text-zinc-400">
+                {r.direction === 'increase' ? '(artış)' : '(azalış)'}
+              </span>
+            )}
+          </span>
+        )
+      },
     }),
     col.accessor('location', {
       header: 'Lokasyon',
@@ -1227,7 +1292,15 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
     }),
     col.accessor('created_at', {
       header: 'Tarih',
-      cell: info => <span className="text-sm text-zinc-500">{formatDate(info.getValue())}</span>,
+      // Seçilen işlem tarihi gösterilir; girilmemişse kaydın oluşturulma günü
+      cell: info => {
+        const r = info.row.original
+        return (
+          <span className="text-sm text-zinc-500" title={r.transaction_date ? 'İşlem tarihi' : 'Kayıt tarihi'}>
+            {formatDate(r.transaction_date ?? info.getValue())}
+          </span>
+        )
+      },
     }),
     col.display({
       id: 'actions',
@@ -1236,6 +1309,13 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
         const row = info.row.original
         return (
           <div className="flex items-center gap-1">
+            <button
+              title="Detayları gör"
+              onClick={() => setDetailRecord(row)}
+              className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-zinc-400 hover:text-blue-600 transition-colors"
+            >
+              <Eye className="h-4 w-4" />
+            </button>
             {row.status !== 'in_progress' && row.status !== 'cancelled' && row.status !== 'approved' && (
               <button
                 title="İşleme Al"
@@ -1340,7 +1420,20 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
           onClose={() => setShowCreate(false)}
           defaultType={defaultType}
           departments={departments}
-          onSuccess={() => qc.invalidateQueries({ queryKey: ['warehouse-records', tabId] })}
+          // Liste kadar özet kartları ve stok ekranları da tazelenir; yoksa kartlar
+          // yeni kaydı saymadan eski değerde kalıyordu.
+          onSuccess={() => {
+            ;['warehouse-records', 'warehouse-stats', 'warehouse-product-stats', 'stock-balances', 'stock-risk', 'stock-reservations']
+              .forEach(k => qc.invalidateQueries({ queryKey: [k] }))
+          }}
+        />
+      )}
+
+      {detailRecord && (
+        <RecordDetailModal
+          record={detailRecord}
+          modulePath="/modules/warehouse"
+          onClose={() => setDetailRecord(null)}
         />
       )}
 
@@ -1661,6 +1754,7 @@ function WarehousePageContent() {
             <WarehouseTabSection tabId="yukleme" departments={departments} />
           )}
           {activeTab === 'stok-durumu' && <StockOverview />}
+          {activeTab === 'booked' && <BookedPanel />}
           {activeTab === 'stok-riski' && <StockRiskPanel />}
           {activeTab === 'satin-alma' && <PurchasingPanel />}
           {activeTab === 'skt-olu-stok' && <ExpiryDeadStockPanel />}

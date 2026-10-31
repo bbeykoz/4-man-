@@ -35,7 +35,9 @@ docker compose run --rm --no-deps -e NODE_OPTIONS=--max-old-space-size=2560 fron
 
 echo "→ Servisler yeniden başlatılıyor"
 docker compose up -d
-docker compose restart app scheduler queue frontend
+# web de yenilenir: nginx upstream adresini acilista cozup onbellege aliyor,
+# app yeniden basladiginda IP degisiyor ve istekler 502 donuyor.
+docker compose restart app scheduler queue frontend web
 
 docker compose ps
 echo "✓ Güncelleme tamam: https://panel.smsbenden.com"

@@ -67,7 +67,9 @@ class CreateRecordRequest extends FormRequest
             // Depo specific
             'product_name'   => ['nullable', 'string', 'max:255'],
             'sku'            => ['nullable', 'string', 'max:100'],
-            'quantity'       => ['nullable', 'numeric', 'min:0'],
+            // Stok sayımında 0 geçerli bir sonuçtur ("hiç yok" sayıldı); diğer hareketlerde
+            // miktar sıfırdan büyük olmalı. Birim bazlı küsurat kuralı WarehouseController'da.
+            'quantity'       => ['nullable', 'numeric', $this->input('type') === 'stock_count' ? 'min:0' : 'gt:0'],
             'unit'           => ['nullable', 'string', 'max:20'],
             'location'       => ['nullable', 'string', 'max:100'],
             'batch_number'   => ['nullable', 'string', 'max:100'],
@@ -137,7 +139,10 @@ class CreateRecordRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'title.required' => 'Başlık zorunludur.',
+            'title.required'   => 'Başlık zorunludur.',
+            'quantity.gt'      => 'Miktar 0\'dan büyük olmalıdır.',
+            'quantity.min'     => 'Miktar negatif olamaz.',
+            'quantity.numeric' => 'Miktar sayı olmalıdır.',
         ];
     }
 }

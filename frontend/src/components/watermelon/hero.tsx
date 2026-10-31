@@ -1,10 +1,11 @@
 'use client';
 
 // watermelon "hero 35" bloğu. Düzen ve hareketler aynı. Değişenler:
-// framer-motion yerine kurulu olan motion/react, LogoIcon yerine BytePanel işareti,
+// framer-motion yerine kurulu olan motion/react, LogoIcon yerine Argus Tech işareti,
 // dış sunucudaki arka plan görseli yerine degrade (istenirse backgroundImage ile görsel verilir),
 // metinler prop.
 import { motion, type Variants } from 'motion/react';
+import { BrandMark } from '@/components/common/BrandMark'
 import { ArrowRight } from 'lucide-react';
 
 export interface HeroNavLink {
@@ -31,7 +32,7 @@ export interface HeroProps {
 }
 
 export default function Hero({
-  brandName = 'BytePanel',
+  brandName = 'Argus Tech',
   navLinks = [],
   navCtaLabel = 'Demo iste',
   navCtaHref = '#iletisim',
@@ -127,9 +128,7 @@ export default function Hero({
           className="flex items-center justify-between"
         >
           <a href="#" className="group flex cursor-pointer items-center gap-2 text-white">
-            <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-blue-600 to-violet-600 text-xs font-bold">
-              BP
-            </span>
+            <BrandMark className="size-8" priority />
             <span className="text-lg font-medium tracking-wide">{brandName}</span>
           </a>
 

@@ -2,6 +2,8 @@
 
 namespace App\Services\Stock;
 
+use App\Support\AppTime;
+
 use App\Models\WarehouseProduct;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -18,7 +20,7 @@ class DeadStockService
     public function analyze(string $companyId, ?string $warehouseId = null): array
     {
         $cfg      = config('stock.movement_classes');
-        $today    = Carbon::today();
+        $today    = AppTime::today();
         $products = WarehouseProduct::forCompany($companyId)->active()->orderBy('name')->get();
         $metrics  = $this->metrics->forProducts($companyId, $warehouseId, $products->pluck('id')->all());
 
@@ -27,7 +29,9 @@ class DeadStockService
             $available  = (float) $m['available'];
             $daily      = (float) $m['daily_consumption'];
             $lastOut    = $m['last_consumption_at'];
-            $sinceOut   = $lastOut ? (int) Carbon::parse($lastOut)->diffInDays($today) : null;
+            // Gün farkı takvim günü üzerinden: saat kısmı kalırsa fark aşağı yuvarlanıyor
+            // ve 4 gün önceki çıkış "3 gün önce" görünüyordu (ölü stok sınırını da kaydırır).
+            $sinceOut   = AppTime::daysBetween($lastOut, $today);
             $daysSupply = $daily > 0 ? $available / $daily : null;
             $price      = $p->unit_price !== null ? (float) $p->unit_price : null;
 

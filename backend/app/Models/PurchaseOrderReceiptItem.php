@@ -18,6 +18,8 @@ class PurchaseOrderReceiptItem extends Model
         return [
             'quantity'         => 'float',
             'damaged_quantity' => 'float',
+            'rejected_quantity'=> 'float',
+            'rejected_at'      => 'datetime',
             'expiry_date'      => 'date',
         ];
     }

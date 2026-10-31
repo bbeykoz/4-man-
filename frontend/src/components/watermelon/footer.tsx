@@ -1,8 +1,9 @@
 'use client';
 
 // watermelon "footer 16" bloğu. Düzen ve hareketler aynı. İki değişiklik:
-// LogoIcon yerine BytePanel işareti, arka plan için dış sunucudaki görsel yerine degrade.
+// LogoIcon yerine Argus Tech işareti, arka plan için dış sunucudaki görsel yerine degrade.
 import { motion, type Variants } from 'motion/react';
+import { BrandMark } from '@/components/common/BrandMark'
 import {
   FaFacebookF,
   FaInstagram,
@@ -85,12 +86,12 @@ const socialIcons = {
 };
 
 export function Footer({
-  brandName = 'BYTEPANEL',
+  brandName = 'ARGUS TECH',
   tagline = 'Deponuzu hareket defteriyle yönetin.\nStok onayda işlenir, kalite kontrol beklerken\nkarantinada durur.',
   columns,
   legalLinks = [],
   socials = [],
-  copyright = `© ${new Date().getFullYear()} BytePanel. Tüm hakları saklıdır.`,
+  copyright = `© ${new Date().getFullYear()} Argus Tech. Tüm hakları saklıdır.`,
 }: FooterProps) {
   return (
     <footer className="relative w-full overflow-hidden bg-zinc-950 font-sans text-zinc-100 antialiased">
@@ -151,9 +152,7 @@ export function Footer({
                 className="group inline-flex min-h-10 items-start gap-2 text-zinc-50 transition-[opacity,transform] duration-200 ease-out hover:opacity-85 active:scale-[0.96]"
                 aria-label={`${brandName} ana sayfa`}
               >
-                <span className="grid size-8 -translate-y-2 place-items-center rounded-lg bg-gradient-to-br from-blue-600 to-violet-600 text-xs font-bold text-white">
-                  BP
-                </span>
+                <BrandMark className="size-8 -translate-y-2" />
                 <span className="text-xl leading-none font-normal tracking-wide">
                   {brandName}
                 </span>

@@ -40,6 +40,7 @@ interface AuthStore extends AuthState {
   hasAnyPermission: (permissions: string[]) => boolean
   isSuperAdmin: () => boolean
   isPlatformUser: () => boolean
+  actsAsPlatform: () => boolean
   isCompanyOwner: () => boolean
   isDepartmentManager: () => boolean
 }
@@ -116,6 +117,9 @@ export const useAuthStore = create<AuthStore>()(
 
       isSuperAdmin: () => get().isSuper || (!get().isPlatform && get().roleLevel === ROLE_LEVELS.SUPER_ADMIN),
       isPlatformUser: () => get().isPlatform,
+      // Bağlanılan şirket oturumunda jeton şirket sahibine ait olur; platform
+      // ekibine ait işlemler (departman açma/silme) bu seçiciyle kontrol edilir.
+      actsAsPlatform: () => get().isPlatform || get().impersonation !== null,
       isCompanyOwner: () => get().roleLevel <= ROLE_LEVELS.COMPANY_OWNER,
       isDepartmentManager: () => get().roleLevel <= ROLE_LEVELS.DEPARTMENT_MANAGER,
     }),

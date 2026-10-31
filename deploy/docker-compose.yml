@@ -15,7 +15,10 @@ services:
       POSTGRES_DB: ${DB_DATABASE}
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-      TZ: Europe/Istanbul
+      # Veri UTC saklanir. Istanbul olarak birakilirsa sutun varsayilanlarindaki
+      # CURRENT_TIMESTAMP yerel saati UTC sanilan sutuna yazar ve 3 saat kayma olur.
+      TZ: UTC
+      PGTZ: UTC
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:

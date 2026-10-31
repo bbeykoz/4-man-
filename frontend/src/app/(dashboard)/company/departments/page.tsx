@@ -6,6 +6,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import { Plus, Pencil, Trash2, Users, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/common/PageHeader'
+import { useAuthStore } from '@/store/auth.store'
 import { DataTable } from '@/components/common/DataTable'
 import { FilterBar } from '@/components/common/FilterBar'
 import { ConfirmModal } from '@/components/common/ConfirmModal'
@@ -42,6 +43,7 @@ const COLORS = [
 const emptyForm = { name: '', description: '', color: 'blue', manager_id: '' }
 
 export default function DepartmentsPage() {
+  const { actsAsPlatform } = useAuthStore()
   const qc = useQueryClient()
   const [page, setPage] = useState(0)
   const [search, setSearch] = useState('')
@@ -191,13 +193,16 @@ export default function DepartmentsPage() {
           >
             <Pencil className="h-4 w-4" />
           </button>
-          <button
-            title="Sil"
-            onClick={() => setDeleteId(info.row.original.id)}
-            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/50 text-zinc-400 hover:text-red-600 transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          {/* Silme platform ekibine ait; şirket tarafı departmanı pasife alarak kapatır. */}
+          {actsAsPlatform() && (
+            <button
+              title="Sil"
+              onClick={() => setDeleteId(info.row.original.id)}
+              className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/50 text-zinc-400 hover:text-red-600 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
         </div>
       ),
     }),
@@ -258,10 +263,17 @@ export default function DepartmentsPage() {
         description="Şirket departmanlarını yönetin"
         breadcrumbs={[{ label: 'Şirket' }, { label: 'Departmanlar' }]}
         actions={
-          <button onClick={() => setCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-            <Plus className="h-4 w-4" />
-            Yeni Departman
-          </button>
+          /* Yeni departman açma yetkisi platform ekibinde; şirket sahibi mevcutları yönetir */
+          actsAsPlatform() ? (
+            <button onClick={() => setCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+              <Plus className="h-4 w-4" />
+              Yeni Departman
+            </button>
+          ) : (
+            <span className="text-xs text-zinc-500">
+              Departman açma ve silme platform ekibindedir. Talep için destek ekibine yazın.
+            </span>
+          )
         }
       />
 
