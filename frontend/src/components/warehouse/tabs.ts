@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   Layers, SlidersHorizontal, ArrowLeftRight, Boxes, Bookmark, ShieldAlert, ShoppingCart, CalendarClock,
-  Shuffle, Siren, FlaskConical, Gauge, Grid3x3, LineChart, Package,
+  Shuffle, Siren, FlaskConical, Gauge, Grid3x3, LineChart, Package, ListChecks,
 } from 'lucide-react'
 
 /** Depo Müdürü ve Depo Kontrolcüsü sayfalarının sekmeleri; kenar menüdeki alt başlıklar da buradan gelir. */
@@ -12,6 +12,7 @@ export const WAREHOUSE_TABS = [
   { id: 'depolama',      label: 'Depolama',               icon: Layers },
   { id: 'stok',          label: 'Stok Kontrolü',          icon: SlidersHorizontal },
   { id: 'yukleme',       label: 'Yükleme – Boşaltma',     icon: ArrowLeftRight },
+  { id: 'gunluk-kontrol', label: 'Günlük Kontrol',        icon: ListChecks },
   { id: 'stok-durumu',   label: 'Stok Durumu',            icon: Boxes },
   { id: 'booked',        label: 'Booked',                 icon: Bookmark },
   { id: 'stok-riski',    label: 'Stok Riski',             icon: ShieldAlert },

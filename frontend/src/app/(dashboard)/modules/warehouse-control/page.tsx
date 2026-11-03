@@ -31,6 +31,7 @@ import { WarehouseFields } from '@/components/warehouse/WarehouseFields'
 import { WarehousesModal } from '@/components/warehouse/WarehousesModal'
 import { StockOverview } from '@/components/warehouse/StockOverview'
 import { BookedPanel } from '@/components/warehouse/BookedPanel'
+import { DailyCheckPanel } from '@/components/warehouse/DailyCheckPanel'
 import { StockRiskPanel } from '@/components/warehouse/StockRiskPanel'
 import { PurchasingPanel } from '@/components/warehouse/purchasing/PurchasingPanel'
 import { RecordStockState } from '@/components/warehouse/RecordStockState'
@@ -1647,6 +1648,7 @@ function WarehouseControlPageContent() {
           {activeTab === 'depolama' && <WarehouseControlTabSection tabId="depolama" departments={departments} />}
           {activeTab === 'stok' && <WarehouseControlTabSection tabId="stok" departments={departments} />}
           {activeTab === 'yukleme' && <WarehouseControlTabSection tabId="yukleme" departments={departments} />}
+          {activeTab === 'gunluk-kontrol' && <DailyCheckPanel />}
           {activeTab === 'stok-durumu' && <StockOverview />}
           {activeTab === 'booked' && <BookedPanel />}
           {activeTab === 'stok-riski' && <StockRiskPanel />}

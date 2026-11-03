@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\CopilotController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\Modules\AccountingController;
 use App\Http\Controllers\Api\V1\Modules\CustomsController;
+use App\Http\Controllers\Api\V1\Modules\DailyCheckController;
 use App\Http\Controllers\Api\V1\Modules\MarketingController;
 use App\Http\Controllers\Api\V1\Modules\PackagingController;
 use App\Http\Controllers\Api\V1\Modules\ReturnController;
@@ -351,6 +352,16 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
             Route::get('{id}',       [WarehouseProductController::class, 'show']);
             Route::put('{id}',       [WarehouseProductController::class, 'update']);
             Route::delete('{id}',    [WarehouseProductController::class, 'destroy']);
+        });
+
+        // Günlük kontrol listesi (ürünler + genel görevler) — warehouse veya warehouse-control aktif olanlara açık
+        Route::prefix('daily-check')->middleware('module.enabled:warehouse,warehouse_control')->group(function () {
+            Route::get('/',                   [DailyCheckController::class, 'index']);
+            Route::post('products/{id}',      [DailyCheckController::class, 'checkProduct']);
+            Route::post('tasks/{id}/check',    [DailyCheckController::class, 'checkTask']);
+            Route::post('tasks',              [DailyCheckController::class, 'storeTask']);
+            Route::put('tasks/{id}',          [DailyCheckController::class, 'updateTask']);
+            Route::delete('tasks/{id}',       [DailyCheckController::class, 'destroyTask']);
         });
 
         Route::prefix('packaging')->middleware('module.enabled:packaging')
