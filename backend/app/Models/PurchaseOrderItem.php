@@ -19,6 +19,7 @@ class PurchaseOrderItem extends Model
             'unit_price'   => 'decimal:2',
             'received_qty' => 'float',
             'damaged_qty'  => 'float',
+            'rejected_qty' => 'float',
             'suggestion'   => 'array',
             'receipt_uploaded_at' => 'datetime',
         ];

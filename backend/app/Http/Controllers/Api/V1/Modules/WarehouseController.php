@@ -10,9 +10,15 @@ use App\Imports\WarehouseImport;
 use App\Models\Department;
 use App\Models\Module;
 use App\Models\Modules\WarehouseRecord;
+use App\Models\StockMovement;
+use App\Models\StockReservation;
 use App\Models\Warehouse;
+use App\Models\WarehouseProduct;
 use App\Services\ActivityLogService;
+use App\Services\Stock\PurchasingService;
 use App\Services\Stock\StockLedgerService;
+use App\Services\Stock\StockReservationService;
+use App\Support\AppTime;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,10 +37,23 @@ class WarehouseController extends BaseModuleController
     protected string $deletePermission  = 'warehouse.records.delete';
     protected string $approvePermission = 'warehouse.records.approve';
 
+    /** Liste satırları detay penceresinde kullanılıyor: kalite kontrolü yapan ve depo adları gerekir. */
+    protected array $indexWith = ['qcCheckedBy:id,name', 'warehouse:id,name', 'toWarehouse:id,name', 'product:id,name,sku,unit'];
+
+    /** Küsurat kabul etmeyen, sayılarak takip edilen birimler. */
+    private const TAM_SAYI_BIRIMLER = ['adet', 'ad', 'piece', 'pcs', 'koli', 'kutu', 'paket', 'palet', 'çuval', 'rulo', 'top', 'düzine'];
+
+    /** Bu kadar gün kalmışsa giriş sırasında SKT uyarısı verilir. */
+    private const SKT_YAKIN_GUN = 30;
+
     private const QC_DISK = 'local';
 
-    public function __construct(ActivityLogService $activityLogService, private readonly StockLedgerService $ledger)
-    {
+    public function __construct(
+        ActivityLogService $activityLogService,
+        private readonly StockLedgerService $ledger,
+        private readonly StockReservationService $reservations,
+        private readonly PurchasingService $purchasing,
+    ) {
         parent::__construct($activityLogService);
     }
 
@@ -47,7 +66,10 @@ class WarehouseController extends BaseModuleController
 
     /**
      * Yeni depo kaydı kalite kontrol cevabıyla birlikte oluşturulur (multipart).
-     * qc_done=1 → görsel zorunlu, kayıt onaylı; qc_done=0 → kayıt "QC bekliyor".
+     *
+     * qc_result=passed   → kayıt onaylı, görsel isteğe bağlı
+     * qc_result=rejected → ürün reddedildi, görsel zorunlu (kanıt), stok karantinada kalır
+     * qc_result=pending  → kontrol henüz yapılmadı, kayıt "QC bekliyor"
      */
     public function store(CreateRecordRequest $request): JsonResponse
     {
@@ -58,14 +80,16 @@ class WarehouseController extends BaseModuleController
         }
 
         $request->validate([
-            'qc_done'  => ['required', 'boolean'],
-            'qc_photo' => ['required_if_accepted:qc_done', 'nullable', 'image', 'max:5120'],
+            'qc_result' => ['required', Rule::in(WarehouseRecord::QC_STATUSES)],
+            'qc_photo'  => ['required_if:qc_result,' . WarehouseRecord::QC_REJECTED, 'nullable', 'image', 'max:5120'],
+            'qc_note'   => ['nullable', 'string', 'max:500'],
         ], $this->qcMessages());
 
-        $user   = $request->user();
-        $stock  = $this->validateStockFields($request, $user->company_id);
-        $qcDone = $request->boolean('qc_done');
-        $photo  = $qcDone ? $this->storeQcPhoto($request, $user->company_id) : null;
+        $user     = $request->user();
+        $stock    = $this->validateStockFields($request, $user->company_id);
+        $qcResult = $request->input('qc_result');
+        $decided  = $qcResult !== WarehouseRecord::QC_PENDING;
+        $photo    = $request->hasFile('qc_photo') ? $this->storeQcPhoto($request, $user->company_id) : null;
 
         // Stok onayla işlenir; kayıt onaylı açılamaz
         $status = in_array($request->input('status'), ['draft', 'pending', 'in_progress'], true)
@@ -81,11 +105,12 @@ class WarehouseController extends BaseModuleController
                     'created_by'    => $user->id,
                     'updated_by'    => $user->id,
                     'status'        => $status,
-                    'qc_status'     => $qcDone ? WarehouseRecord::QC_PASSED : WarehouseRecord::QC_PENDING,
+                    'qc_status'     => $qcResult,
                     'qc_photo_path' => $photo,
                     'qc_photo_disk' => $photo ? self::QC_DISK : null,
-                    'qc_checked_by' => $qcDone ? $user->id : null,
-                    'qc_checked_at' => $qcDone ? now() : null,
+                    'qc_checked_by' => $decided ? $user->id : null,
+                    'qc_checked_at' => $decided ? now() : null,
+                    'qc_note'       => $request->input('qc_note'),
                 ]
             ));
         } catch (\Throwable $e) {
@@ -95,12 +120,23 @@ class WarehouseController extends BaseModuleController
             throw $e;
         }
 
+        // Stok çıkışı siparişe ayrılır: ürün serbest stoktan rezerveye geçer (Booked).
+        // Rezervasyon serbest stoğu tükettiği için uyarı ondan sonra hesaplanamaz;
+        // ne kadarının ayrılabildiğini rezervasyon kaydının kendisi söyler.
+        $reservation = $this->reservations->openFor($record, $user);
+
         $this->activityLogService->log("{$this->module}.record.created", $record, $user);
 
         return response()->json([
-            'success' => true,
-            'data'    => new RecordResource($record->load(['createdBy', 'department', 'qcCheckedBy:id,name'])),
-            'message' => $qcDone ? 'Kayıt oluşturuldu, kalite kontrol onaylandı.' : 'Kayıt oluşturuldu, kalite kontrol bekliyor.',
+            'success'  => true,
+            // Stok yetmiyorsa kullanıcı onayı beklemeden, kaydı açarken uyarılır
+            'warnings' => $this->stockWarnings($record, $reservation),
+            'data'     => new RecordResource($record->fresh(['createdBy', 'department', 'qcCheckedBy:id,name'])),
+            'message' => match ($qcResult) {
+                WarehouseRecord::QC_PASSED   => 'Kayıt oluşturuldu, kalite kontrol onaylandı.',
+                WarehouseRecord::QC_REJECTED => 'Kayıt oluşturuldu, ürün kalite kontrolden geçmedi. Stok karantinada.',
+                default                      => 'Kayıt oluşturuldu, kalite kontrol bekliyor.',
+            },
         ], 201);
     }
 
@@ -138,6 +174,12 @@ class WarehouseController extends BaseModuleController
                 throw new StockException('İptal edilip stoğu geri alınan kayıt tekrar açılamaz. Yeni kayıt oluşturun.');
             }
 
+            // Rezerve edilmiş sipariş buradan işlenmez: stok zaten rezervede durur,
+            // teslimat Booked ekranından yapılır. Yoksa stok iki kez düşerdi.
+            if (in_array($newStatus, ['approved', 'completed'], true) && $this->reservations->hasOpenReservation($record)) {
+                throw new StockException('Bu kayıt için stok rezerve edildi. Teslimatı Booked sekmesinden yapın.');
+            }
+
             if (in_array($newStatus, ['approved', 'completed'], true)) {
                 $this->ledger->post($record, $user);
                 if ($newStatus === 'approved') {
@@ -145,6 +187,25 @@ class WarehouseController extends BaseModuleController
                 }
             } elseif ($record->isPosted()) {
                 $this->ledger->reverse($record, $user);
+            }
+
+            if ($newStatus === 'cancelled') {
+                // İptalde rezervedeki miktar serbest stoğa döner
+                $this->reservations->releaseForRecord($record, $user);
+
+                // Bekleyen kalite kontrol iptalle birlikte kapanır; liste "QC Bekliyor"
+                // göstermeye devam etmemeli.
+                if ($record->qc_status === WarehouseRecord::QC_PENDING) {
+                    $record->forceFill([
+                        'qc_status'     => WarehouseRecord::QC_REJECTED,
+                        'qc_checked_by' => $record->qc_checked_by ?? $user->id,
+                        'qc_checked_at' => $record->qc_checked_at ?? now(),
+                        'qc_note'       => $record->qc_note ?? 'Kayıt iptal edildiği için kalite kontrol kapatıldı.',
+                    ])->save();
+                }
+
+                // Satın alma teslimatının iptali siparişe yansır
+                $this->purchasing->rejectReceipt($record, 'Stok giriş kaydı iptal edildi.');
             }
 
             return parent::updateStatus($request, $id);
@@ -161,7 +222,73 @@ class WarehouseController extends BaseModuleController
             throw new StockException('Stoğa işlenmiş kayıt silinemez. Önce iptal edin.');
         }
 
+        // Silinen siparişin rezervesi serbest stoğa döner
+        $this->reservations->releaseForRecord($record, $request->user());
+
         return parent::destroy($request, $id);
+    }
+
+    /**
+     * Kayıt açılırken stok yetmiyorsa uyarı üretir (engellemez).
+     *
+     * Yetersizlik eskiden yalnız onay anında görülüyordu; kullanıcı 85 adetlik stoğa
+     * 500 adetlik çıkış kaydı açıp sorunu çok sonra fark ediyordu.
+     *
+     * @return string[]
+     */
+    private function stockWarnings(WarehouseRecord $record, ?StockReservation $reservation = null): array
+    {
+        $uyarilar = [];
+
+        // Girişte son kullanma tarihi kontrolü: SKT'si geçmiş ya da çok yakın lot
+        // sessizce stoğa alınıyordu.
+        if (in_array($record->type, ['stock_in', 'return_in'], true) && $record->expiry_date) {
+            $bugun = AppTime::today();
+            $skt   = $record->expiry_date->copy()->startOfDay();
+            $lot   = $record->batch_number ? " ({$record->batch_number} lotu)" : '';
+
+            if ($skt->lt($bugun)) {
+                $gun = (int) $skt->diffInDays($bugun);
+                $uyarilar[] = "Son kullanma tarihi geçmiş ürün girildi{$lot}: {$skt->format('d.m.Y')}, {$gun} gün önce doldu. Girişi gözden geçirin.";
+            } elseif ($skt->lte($bugun->copy()->addDays(self::SKT_YAKIN_GUN))) {
+                $gun = (int) $bugun->diffInDays($skt);
+                $uyarilar[] = "Son kullanma tarihi yakın ürün girildi{$lot}: {$skt->format('d.m.Y')}, {$gun} gün kaldı. FIFO ile öncelikli çıkarın.";
+            }
+        }
+
+        $tuketen = ['stock_out', 'transfer', 'damage'];
+
+        if (!$record->product_id || !$record->warehouse_id || !in_array($record->type, $tuketen, true)) {
+            return $uyarilar;
+        }
+
+        $istenen = (float) $record->quantity;
+
+        // Rezervasyon açıldıysa ayrılabilen miktar = kayıttan önceki serbest stok
+        $mevcut = $reservation
+            ? (float) $reservation->reserved_quantity
+            : $this->ledger->balance(
+                $record->company_id,
+                $record->product_id,
+                $record->warehouse_id,
+                StockMovement::BUCKET_AVAILABLE,
+            );
+
+        if ($istenen - $mevcut <= 0.0005) {
+            return $uyarilar;
+        }
+
+        $birim = $record->unit ?: ($record->product?->unit ?: 'adet');
+        $eksik = rtrim(rtrim(number_format($istenen - $mevcut, 3, '.', ''), '0'), '.');
+        $var   = rtrim(rtrim(number_format($mevcut, 3, '.', ''), '0'), '.');
+
+        $kuyruk = $reservation
+            ? 'Bulunabilen miktar rezerve edildi; kalanı Booked sekmesinden tamamlayabilirsiniz.'
+            : 'Kayıt açıldı ancak stok tamamlanmadan işlenemez.';
+
+        $uyarilar[] = "Yetersiz stok: depoda {$var} {$birim} var, {$eksik} {$birim} eksik. {$kuyruk}";
+
+        return $uyarilar;
     }
 
     /** Depo/ürün şirkete ait olmalı; transferde hedef, düzeltmede yön zorunlu. */
@@ -173,10 +300,41 @@ class WarehouseController extends BaseModuleController
 
         $data = $request->validate([
             'type'            => ['nullable', Rule::in(WarehouseRecord::TYPES)],
+            // Gelecek tarihli hareket stok geçmişini bozar; sınır Türkiye gününe göre
+            'transaction_date'=> ['nullable', 'date', 'before_or_equal:' . AppTime::today()->toDateString()],
             'product_id'      => ['nullable', 'uuid', $ofCompany('warehouse_products')],
             'quantity'        => [
                 Rule::requiredIf(fn() => $request->filled('product_id') && $request->input('type') !== 'inspection'),
-                'nullable', 'numeric', 'min:0',
+                'nullable', 'numeric',
+                // Sayılabilir birimlerde küsurat olmaz: 145,97 adet kâğıt alınamaz.
+                function (string $attribute, mixed $value, \Closure $fail) use ($request, $companyId) {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    $unit = $request->input('unit')
+                        ?: ($request->filled('product_id')
+                            ? WarehouseProduct::forCompany($companyId)->whereKey($request->input('product_id'))->value('unit')
+                            : null);
+
+                    if ($unit && in_array(mb_strtolower(trim($unit)), self::TAM_SAYI_BIRIMLER, true)
+                        && abs((float) $value - round((float) $value)) > 0.0001) {
+                        $fail("\"{$unit}\" biriminde küsuratlı miktar girilemez. Tam sayı yazın.");
+                    }
+                },
+            ],
+            // Birim ürün kartındakiyle aynı olmalı. Çevrim tablosu yok; farklı birimle
+            // girilen miktar çevrilmeden stoktan düşerdi (5 kg → 5 adet).
+            'unit'            => [
+                'nullable', 'string', 'max:20',
+                function (string $attribute, mixed $value, \Closure $fail) use ($request, $companyId) {
+                    if (!$value || !$request->filled('product_id')) {
+                        return;
+                    }
+                    $productUnit = WarehouseProduct::forCompany($companyId)->whereKey($request->input('product_id'))->value('unit');
+                    if ($productUnit && mb_strtolower(trim($value)) !== mb_strtolower(trim($productUnit))) {
+                        $fail("Ürünün birimi \"{$productUnit}\". Farklı birimle ({$value}) hareket girilemez; miktarı {$productUnit} cinsinden yazın.");
+                    }
+                },
             ],
             'warehouse_id'    => ['nullable', 'uuid', $ofCompany('warehouses')],
             'to_warehouse_id' => ['nullable', 'required_if:type,transfer', 'uuid', $ofCompany('warehouses')],
@@ -194,10 +352,13 @@ class WarehouseController extends BaseModuleController
         ], [
             'product_id.exists'           => 'Seçilen ürün bulunamadı.',
             'quantity.required'           => 'Ürün seçildiğinde miktar zorunludur.',
+            'quantity.gt'                 => 'Miktar 0\'dan büyük olmalıdır.',
+            'quantity.numeric'            => 'Miktar sayı olmalıdır.',
             'warehouse_id.exists'         => 'Seçilen depo bulunamadı.',
             'to_warehouse_id.required_if' => 'Transfer için hedef depo seçin.',
             'to_warehouse_id.exists'      => 'Hedef depo bulunamadı.',
             'direction.required_if'       => 'Düzeltme için artış veya azalış seçin.',
+            'transaction_date.before_or_equal' => 'İşlem tarihi gelecekte olamaz.',
             'department_id.exists'        => 'Seçilen departman bulunamadı.',
         ]);
 
@@ -213,7 +374,12 @@ class WarehouseController extends BaseModuleController
         ], fn($v) => $v !== null);
     }
 
-    /** "QC bekliyor" kayda sonradan görsel yükleyip onaylama. */
+    /**
+     * "QC bekliyor" kaydı sonuçlandırır.
+     *
+     * Onayda görsel isteğe bağlıdır; stok karantinadan kullanılabilir hâle geçer.
+     * Redde görsel zorunludur (kanıt) ve stok karantinada kalır.
+     */
     public function qualityCheck(Request $request, string $id): JsonResponse
     {
         $user = $request->user();
@@ -227,7 +393,9 @@ class WarehouseController extends BaseModuleController
         }
 
         $request->validate([
-            'qc_photo' => ['required', 'image', 'max:5120'],
+            'result'   => ['required', Rule::in([WarehouseRecord::QC_PASSED, WarehouseRecord::QC_REJECTED])],
+            'qc_photo' => ['required_if:result,' . WarehouseRecord::QC_REJECTED, 'nullable', 'image', 'max:5120'],
+            'qc_note'  => ['nullable', 'string', 'max:500'],
         ], $this->qcMessages());
 
         $record = WarehouseRecord::where('company_id', $user->company_id)->findOrFail($id);
@@ -239,33 +407,51 @@ class WarehouseController extends BaseModuleController
             ], 422);
         }
 
-        $photo = $this->storeQcPhoto($request, $user->company_id);
+        $result   = $request->input('result');
+        $rejected = $result === WarehouseRecord::QC_REJECTED;
+        $photo    = $request->hasFile('qc_photo') ? $this->storeQcPhoto($request, $user->company_id) : null;
 
         try {
-            DB::transaction(function () use ($record, $photo, $user) {
-                $record->update([
-                    'qc_status'     => WarehouseRecord::QC_PASSED,
+            DB::transaction(function () use ($record, $photo, $user, $result, $rejected) {
+                $record->update(array_filter([
+                    'qc_status'     => $result,
                     'qc_photo_path' => $photo,
-                    'qc_photo_disk' => self::QC_DISK,
+                    'qc_photo_disk' => $photo ? self::QC_DISK : null,
                     'qc_checked_by' => $user->id,
                     'qc_checked_at' => now(),
+                    'qc_note'       => request('qc_note'),
                     'updated_by'    => $user->id,
-                ]);
+                ], fn($v) => $v !== null));
 
-                // Onaylı girişin karantinadaki stoğu kullanılabilir hâle gelir
-                $this->ledger->releaseQuarantine($record, $user);
+                // Onaylı girişin karantinadaki stoğu kullanılabilir hâle gelir.
+                // Reddedilen üründe karantina çözülmez; stok orada bekler.
+                if ($rejected) {
+                    // Satın alma teslimatıysa sipariş ve tedarikçi performansı güncellenir:
+                    // kabul edilmeyen miktar "teslim alındı" sayılmaya devam etmemeli.
+                    $this->purchasing->rejectReceipt($record, request('qc_note'));
+                } else {
+                    $this->ledger->releaseQuarantine($record, $user);
+                }
             });
         } catch (\Throwable $e) {
-            Storage::disk(self::QC_DISK)->delete($photo);
+            if ($photo) {
+                Storage::disk(self::QC_DISK)->delete($photo);
+            }
             throw $e;
         }
 
-        $this->activityLogService->log("{$this->module}.record.qc_passed", $record, $user);
+        $this->activityLogService->log(
+            "{$this->module}.record." . ($rejected ? 'qc_rejected' : 'qc_passed'),
+            $record,
+            $user,
+        );
 
         return response()->json([
             'success' => true,
             'data'    => new RecordResource($record->fresh(['createdBy', 'department'])),
-            'message' => 'Kalite kontrol onaylandı.',
+            'message' => $rejected
+                ? 'Ürün reddedildi. Stok karantinada kalır.'
+                : 'Kalite kontrol onaylandı.',
         ]);
     }
 
@@ -399,9 +585,11 @@ class WarehouseController extends BaseModuleController
     private function qcMessages(): array
     {
         return [
-            'qc_done.required'                => 'Kalite kontrol yapılıp yapılmadığını seçin.',
-            'qc_photo.required'               => 'Kalite kontrol görseli zorunludur.',
-            'qc_photo.required_if_accepted'   => 'Kalite kontrol yapıldıysa görsel zorunludur.',
+            'qc_result.required'              => 'Kalite kontrol sonucunu seçin.',
+            'qc_result.in'                    => 'Geçersiz kalite kontrol sonucu.',
+            'result.required'                 => 'Kalite kontrol sonucunu seçin.',
+            'result.in'                       => 'Geçersiz kalite kontrol sonucu.',
+            'qc_photo.required_if'            => 'Ürün reddedildiğinde görsel zorunludur.',
             'qc_photo.image'                  => 'Kalite kontrol görseli bir resim dosyası olmalıdır.',
             'qc_photo.max'                    => 'Görsel en fazla 5 MB olabilir.',
             'qc_photo.uploaded'               => 'Görsel yüklenemedi. Dosya boyutunu kontrol edin.',

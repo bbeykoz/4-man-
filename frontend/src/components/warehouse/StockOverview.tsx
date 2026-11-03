@@ -137,7 +137,7 @@ function ProductStockModal({ productId, onClose }: { productId: string; onClose:
         ) : (
           <div className="flex-1 overflow-y-auto p-5 space-y-6">
             <section>
-              <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-2">Lot / SKT Bakiyeleri <span className="font-normal text-xs text-zinc-400">(çıkışlar bu sırayla yapılır — FEFO)</span></h3>
+              <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-2">Lot / SKT Bakiyeleri <span className="font-normal text-xs text-zinc-400">(çıkışlar bu sırayla yapılır — FIFO)</span></h3>
               {data.lots.length === 0 ? (
                 <p className="text-sm text-zinc-400">Stok yok.</p>
               ) : (

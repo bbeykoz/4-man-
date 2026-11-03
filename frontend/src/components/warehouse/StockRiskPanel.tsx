@@ -20,6 +20,7 @@ interface RiskRow {
   available: number
   daily_consumption: number
   days_of_cover: number | null
+  out_of_stock?: boolean
   lead_time_days: number
   lead_time_estimated: boolean
   safety_stock: number
@@ -28,7 +29,7 @@ interface RiskRow {
   expiry_risk_qty: number
   risk_score: number
   risk_level: RiskLevel
-  driver: 'stockout' | 'below_min' | 'expiry' | 'reorder' | null
+  driver: 'stockout' | 'below_min' | 'expiry' | 'reorder' | 'out_of_stock' | null
   suggested_order_qty: number
   explanation: string
   recommendation: string
@@ -48,10 +49,11 @@ const LEVELS: Record<RiskLevel, { label: string; card: string; bar: string; text
 }
 
 const DRIVERS: Record<string, string> = {
-  stockout:  'Tükenme riski',
-  below_min: 'Min/güvenlik stoğu altı',
-  expiry:    'SKT riski',
-  reorder:   'Sipariş noktası',
+  stockout:     'Tükenme riski',
+  below_min:    'Min/güvenlik stoğu altı',
+  expiry:       'SKT riski',
+  reorder:      'Sipariş noktası',
+  out_of_stock: 'Stok yok',
 }
 
 const inputCls = 'px-3 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500'
@@ -142,11 +144,18 @@ export function StockRiskPanel() {
                       {r.sku && <p className="text-xs text-zinc-400">{r.sku}</p>}
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">
-                      {formatQty(r.available)} {r.unit}
+                      {r.out_of_stock
+                        ? <span className="inline-block rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300">Stok yok</span>
+                        : <>{formatQty(r.available)} {r.unit}</>}
                       {r.on_order > 0 && <p className="text-[11px] text-blue-600">+{formatQty(r.on_order)} yolda</p>}
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.daily_consumption ? formatQty(r.daily_consumption) : '—'}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{r.days_of_cover != null ? formatQty(r.days_of_cover) : '∞'}</td>
+                    {/* Stok yoksa kapsam 0; "∞" yalnız stok varken tüketim olmadığında gösterilir */}
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {r.days_of_cover != null
+                        ? formatQty(r.days_of_cover)
+                        : <span title="Stok var, tüketim yok">∞</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.lead_time_days} gün{r.lead_time_estimated ? '*' : ''}</td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2">
@@ -155,7 +164,12 @@ export function StockRiskPanel() {
                         </div>
                         <span className={cn('text-xs font-semibold tabular-nums', lv.text)}>%{r.risk_score}</span>
                       </div>
-                      <p className="text-[11px] text-zinc-400 mt-0.5">{lv.label}{r.driver ? ` · ${DRIVERS[r.driver]}` : ''}</p>
+                      {/* Stoğu bitmiş ama tüketimi olmayan ürün "Düşük risk" diye geçmesin */}
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
+                        {r.driver === 'out_of_stock'
+                          ? <span className="font-medium text-red-600 dark:text-red-400">Stok yok</span>
+                          : <>{lv.label}{r.driver ? ` · ${DRIVERS[r.driver]}` : ''}</>}
+                      </p>
                     </td>
                     <td className="px-3 py-2.5 text-xs font-medium text-zinc-700 dark:text-zinc-300">{r.recommendation}</td>
                     <td className="px-3 py-2.5">

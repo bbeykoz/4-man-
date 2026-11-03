@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Modules\WarehouseRecord;
 use App\Traits\HasUuid;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -62,5 +63,26 @@ class StockMovement extends Model
     public function scopeForCompany($query, ?string $companyId)
     {
         return $companyId ? $query->where('company_id', $companyId) : $query->whereRaw('1 = 0');
+    }
+
+    /**
+     * Silinmiş ürünlerin defter satırları hiçbir hesaba girmez.
+     *
+     * Ürün silindiğinde hareketleri yerinde kalıyordu; ürün listelerinde görünmeyen
+     * bu satırlar depo toplamlarına, stok değerine, devir hızına ve transfer
+     * önerilerine ekleniyordu ("hayalet stok"). Genel kapsam olarak tanımlandı ki
+     * tek tek sorgulara bağlı kalmasın.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('existingProduct', function (Builder $query) {
+            $query->whereHas('product');
+        });
+    }
+
+    /** Denetim/temizlik için: silinmiş ürünlerin satırlarını da getirir. */
+    public function scopeWithDeletedProducts($query)
+    {
+        return $query->withoutGlobalScope('existingProduct');
     }
 }

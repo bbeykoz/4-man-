@@ -19,8 +19,15 @@ class ActivityLogService
         try {
             $user = $causer ?? auth()->user();
 
+            // Platform tarafının denetim kayıtları (platform.*) süper adminin sistem
+            // kayıtlarında görünür, şirketin kendi aktivitesinde görünmez. Bu yüzden
+            // company_id boş bırakılır; şirket aktivitesi company_id ile süzülüyor.
+            $companyId = str_starts_with($action, 'platform.')
+                ? null
+                : ($model?->company_id ?? $user?->company_id);
+
             ActivityLog::create([
-                'company_id'  => $model?->company_id ?? $user?->company_id,
+                'company_id'  => $companyId,
                 'user_id'     => $user?->id,
                 'action'      => $action,
                 'model_type'  => $model ? get_class($model) : null,
@@ -30,6 +37,9 @@ class ActivityLogService
                 'new_values'  => $newValues,
                 'ip_address'  => request()->ip(),
                 'user_agent'  => request()->userAgent(),
+                // Zaman uygulamada üretilir. Sütunun CURRENT_TIMESTAMP varsayılanı
+                // veritabanının saat dilimine bağlı olduğu için kaymaya yol açıyordu.
+                'created_at'  => now(),
             ]);
         } catch (\Throwable $e) {
             logger()->error('ActivityLog write failed: ' . $e->getMessage());

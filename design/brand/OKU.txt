@@ -1,0 +1,14 @@
+Argus Tech marka kaynak dosyaları (tasarımcıdan gelen hâlleri).
+
+  logo.png    isaret
+  argus.png   "ARGUS" yazisi
+  tech.png    "TECH" yazisi
+  hepsi.jpeg  hepsi bir arada
+  mark-512.png / mark-128.png  logo.png'den uretilen kare hâller
+
+Bunlar siteye servis EDILMEZ; yalnız kaynak olarak durur.
+Uygulamanın kullandıkları: frontend/public/brand/ içinde.
+
+Not: dosyaların arka planı saydam değil, koyu lacivert (#040d16) gömülü.
+Tasarımcıdan saydam zeminli ya da SVG sürüm gelirse açık temada
+daha temiz görünür; şimdilik işaret kendi zemininde rozet olarak kullanılıyor.

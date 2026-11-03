@@ -65,7 +65,17 @@ return [
     |
     */
 
+    // Veriler UTC saklanır: sunucu değişse de kayıtların saati kaymaz.
     'timezone' => 'UTC',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Gösterim Saat Dilimi
+    |--------------------------------------------------------------------------
+    | "Bugün", "bu ay", gece görevleri ve ekrandaki saatler bu dilime göre
+    | hesaplanır. Veritabanı yine UTC tutar; çevrim App\Support\AppTime ile yapılır.
+    */
+    'display_timezone' => env('APP_DISPLAY_TIMEZONE', 'Europe/Istanbul'),
 
     /*
     |--------------------------------------------------------------------------
@@ -78,7 +88,9 @@ return [
     |
     */
 
-    'locale' => env('APP_LOCALE', 'en'),
+    // Panel tek dilli: doğrulama ve çerçeve mesajları Türkçe çıkar.
+    // Eksik bir çeviri olursa fallback_locale üzerinden İngilizce'ye düşer.
+    'locale' => env('APP_LOCALE', 'tr'),
 
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 

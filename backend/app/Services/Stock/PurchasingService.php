@@ -7,6 +7,7 @@ use App\Models\Modules\WarehouseRecord;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\PurchaseOrderReceipt;
+use App\Models\PurchaseOrderReceiptItem;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -23,6 +24,7 @@ class PurchasingService
     public function __construct(
         private readonly StockRiskService $risk,
         private readonly StockLedgerService $ledger,
+        private readonly StockMetricsService $metrics,
     ) {}
 
     // ─── Öneriler ───────────────────────────────────────────────────
@@ -32,9 +34,16 @@ class PurchasingService
     {
         $review = (int) config('stock.review_period_days', 7);
 
-        return $this->risk->assessCompany($companyId, $warehouseId)
-            ->filter(fn($r) => $r['suggested_order_qty'] > 0 && in_array($r['driver'], ['stockout', 'below_min', 'reorder'], true))
+        $rows = $this->risk->assessCompany($companyId, $warehouseId)
+            ->filter(fn($r) => $r['suggested_order_qty'] > 0 && in_array($r['driver'], ['stockout', 'below_min', 'reorder'], true));
+
+        // İhtiyacın hangi depoda olduğu hesaplanır: öneri tek bir "varsayılan depoya"
+        // teslim ediliyordu ve kullanıcı yanlış depoya sipariş verebiliyordu.
+        $needs = $this->warehouseNeeds($companyId, $rows, $review, $warehouseId);
+
+        return $rows
             ->map(fn($r) => [
+                ...($needs[$r['product_id']] ?? ['need_warehouse_id' => null, 'need_warehouse_name' => null, 'warehouse_breakdown' => []]),
                 'product_id'          => $r['product_id'],
                 'name'                => $r['name'],
                 'sku'                 => $r['sku'],
@@ -56,6 +65,74 @@ class PurchasingService
             ])
             ->sortByDesc('risk_score')
             ->values();
+    }
+
+    /**
+     * Her öneri için ihtiyacın yoğunlaştığı depoyu bulur.
+     *
+     * Depo bazında hedef stok = o depodaki günlük tüketim × (tedarik + gözden geçirme)
+     * + güvenlik stoğu payı. Açığı en büyük depo teslim için önerilir.
+     *
+     * @param Collection<int|string, array> $rows
+     * @return array<string, array{need_warehouse_id: ?string, need_warehouse_name: ?string, warehouse_breakdown: array}>
+     */
+    private function warehouseNeeds(string $companyId, Collection $rows, int $review, ?string $warehouseId): array
+    {
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $ids        = $rows->pluck('product_id')->all();
+        $byProduct  = $rows->keyBy('product_id');
+        $warehouses = Warehouse::forCompany($companyId)
+            ->when($warehouseId, fn($q) => $q->whereKey($warehouseId))
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->get(['id', 'name']);
+
+        $sonuc = [];
+
+        foreach ($warehouses as $w) {
+            $metrics = $this->metrics->forProducts($companyId, $w->id, $ids);
+
+            foreach ($ids as $pid) {
+                $m = $metrics[$pid] ?? null;
+                if (!$m) {
+                    continue;
+                }
+
+                $r        = $byProduct[$pid];
+                $gunluk   = (float) ($m['daily_consumption_exact'] ?? $m['daily_consumption']);
+                $mevcut   = (float) $m['available'] + (float) $m['on_order'];
+                $hedef    = $gunluk > 0
+                    ? $gunluk * ((int) $r['lead_time_days'] + $review) + (float) $r['safety_stock']
+                    : (float) $r['safety_stock'];
+                $acik     = round(max(0, $hedef - $mevcut), 3);
+
+                $sonuc[$pid]['warehouse_breakdown'][] = [
+                    'warehouse_id'   => $w->id,
+                    'warehouse_name' => $w->name,
+                    'available'      => (float) $m['available'],
+                    'daily'          => round($gunluk, 3),
+                    'shortfall'      => $acik,
+                ];
+            }
+        }
+
+        foreach ($sonuc as $pid => $veri) {
+            $satirlar = collect($veri['warehouse_breakdown'])->sortByDesc('shortfall')->values();
+            $enAcik   = $satirlar->first();
+            // Hiçbir depoda açık yoksa yönlendirme yapılmaz; kullanıcı kendi seçer
+            $hedefDepo = $enAcik && $enAcik['shortfall'] > 0 ? $enAcik : null;
+
+            $sonuc[$pid] = [
+                'need_warehouse_id'   => $hedefDepo['warehouse_id'] ?? null,
+                'need_warehouse_name' => $hedefDepo['warehouse_name'] ?? null,
+                'warehouse_breakdown' => $satirlar->filter(fn($x) => $x['shortfall'] > 0 || $x['available'] > 0)->values()->all(),
+            ];
+        }
+
+        return $sonuc;
     }
 
     /**
@@ -270,6 +347,60 @@ class PurchasingService
         });
     }
 
+    // ─── Teslimat reddi ─────────────────────────────────────────────
+
+    /**
+     * Teslim alınan bir partinin reddedilmesini siparişe işler.
+     *
+     * Kalite kontrolde "Reddet" seçilince ya da teslimatın stok giriş kaydı iptal
+     * edilince çağrılır. Reddedilen miktar teslim alınandan düşülür, ayrı bir
+     * sayaçta tutulur ve sipariş yeniden açılır; böylece sipariş kabul edilmeyen
+     * malı "teslim alındı" saymaz ve tedarikçi performansı doğru hesaplanır.
+     */
+    public function rejectReceipt(WarehouseRecord $record, ?string $reason = null): void
+    {
+        $receiptItem = PurchaseOrderReceiptItem::where('record_id', $record->id)->first();
+
+        if (!$receiptItem || $receiptItem->rejected_at) {
+            return; // satın almayla ilgisi yok ya da zaten reddedilmiş
+        }
+
+        DB::transaction(function () use ($receiptItem, $reason) {
+            $miktar = (float) $receiptItem->quantity;
+
+            $receiptItem->update([
+                'rejected_quantity' => $miktar,
+                'rejection_reason'  => $reason,
+                'rejected_at'       => now(),
+            ]);
+
+            $item = $receiptItem->item;
+            if (!$item) {
+                return;
+            }
+
+            $item->update([
+                'received_qty' => max(0, round($item->received_qty - $miktar, 3)),
+                'rejected_qty' => round($item->rejected_qty + $miktar, 3),
+            ]);
+
+            $po = $item->purchaseOrder;
+            if (!$po || $po->status === PurchaseOrder::STATUS_CANCELLED) {
+                return;
+            }
+
+            // Eksik kalan miktar yeniden beklenir hâle gelir
+            $kalanVar = $po->items()->get()->contains(fn(PurchaseOrderItem $i) => $i->remainingQty() > 0);
+
+            $po->update([
+                'status'      => $kalanVar
+                    ? ($po->receipts()->exists() ? PurchaseOrder::STATUS_PARTIAL : PurchaseOrder::STATUS_SENT)
+                    : PurchaseOrder::STATUS_RECEIVED,
+                'received_at' => $kalanVar ? null : $po->received_at,
+            ]);
+        });
+    }
+
     // ─── Yardımcılar ────────────────────────────────────────────────
 
     /** @param array<int, array{product_id: string, quantity: float, unit_price?: ?float, suggestion?: ?array}> $items */
@@ -318,13 +449,25 @@ class PurchasingService
             ?? throw new StockException('Teslim deposu bulunamadı.');
     }
 
-    /** Belgedeki gibi: "Son 30 günlük tüketim, 12 günlük tedarik süresi ve 100 adet güvenlik stoğu dikkate alındı." */
+    /**
+     * Öneri gerekçesi: "Son 30 günlük tüketim, 12 günlük tedarik süresi … dikkate alındı."
+     *
+     * Metin gerçekte kullanılan hesabı yazar. Yeni üründe pencere 30 gün değil,
+     * ürünün yaşı kadardır (en az min_consumption_days); eski üründe 30/90 günlük
+     * ağırlıklı ortalama kullanılır. Eskiden her durumda "son 30 gün" yazıyordu.
+     */
     private function reason(array $r, int $review): string
     {
-        $window = (int) config('stock.consumption_short_window', 30);
-        $parts  = [];
+        $parts = [];
         if ($r['daily_consumption'] > 0) {
-            $parts[] = "son {$window} günlük tüketim (günde " . rtrim(rtrim(number_format($r['daily_consumption'], 1, ',', '.'), '0'), ',') . " {$r['unit']})";
+            $gunluk = rtrim(rtrim(number_format($r['daily_consumption'], 1, ',', '.'), '0'), ',');
+            $kisa   = (int) config('stock.consumption_short_window', 30);
+            $uzun   = (int) config('stock.consumption_long_window', 90);
+            $pencere = (int) ($r['consumption_days'] ?? $kisa);
+
+            $parts[] = ($r['consumption_blended'] ?? false)
+                ? "son {$kisa} ve {$uzun} günlük tüketimin ağırlıklı ortalaması (günde {$gunluk} {$r['unit']})"
+                : "son {$pencere} günlük tüketim (günde {$gunluk} {$r['unit']})";
         }
         $parts[] = "{$r['lead_time_days']} günlük tedarik süresi" . ($r['lead_time_estimated'] ? ' (tahmini)' : '') . " + {$review} gün gözden geçirme";
         if ($r['safety_stock'] > 0) {

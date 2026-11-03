@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, KeyboardEvent, ClipboardEvent, Suspense } from 'react'
+import { BrandMark } from '@/components/common/BrandMark'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { ShieldCheck, Copy, CheckCheck, Loader2 } from 'lucide-react'
@@ -101,10 +102,8 @@ function TwoFactorSetupContent() {
       <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-blue-900 via-blue-800 to-violet-900 items-center justify-center p-12">
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '32px 32px' }} />
         <div className="relative z-10 text-center">
-          <div className="w-20 h-20 rounded-2xl bg-white/10 backdrop-blur border border-white/20 flex items-center justify-center mx-auto mb-8">
-            <span className="text-white text-3xl font-bold">BP</span>
-          </div>
-          <h1 className="text-4xl font-bold text-white mb-4">BytePanel</h1>
+          <BrandMark className="mx-auto mb-8 h-20 w-20 rounded-2xl" priority />
+          <h1 className="text-4xl font-bold text-white mb-4">Argus Tech</h1>
           <p className="text-blue-200 text-lg max-w-xs">Hesabınızı Google Authenticator ile güvence altına alın.</p>
         </div>
       </div>
@@ -113,10 +112,8 @@ function TwoFactorSetupContent() {
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-violet-600 flex items-center justify-center">
-              <span className="text-white text-sm font-bold">BP</span>
-            </div>
-            <span className="text-xl font-bold text-white">BytePanel</span>
+            <BrandMark className="h-10 w-10 rounded-xl" />
+            <span className="text-xl font-bold text-white">Argus Tech</span>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl">

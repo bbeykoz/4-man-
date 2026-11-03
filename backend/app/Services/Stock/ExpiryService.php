@@ -2,6 +2,8 @@
 
 namespace App\Services\Stock;
 
+use App\Support\AppTime;
+
 use App\Exceptions\StockException;
 use App\Models\Modules\WarehouseRecord;
 use App\Models\StockMovement;
@@ -24,7 +26,7 @@ class ExpiryService
     /** @return array{lots: Collection, products: Collection, summary: array} */
     public function analyze(string $companyId, ?string $warehouseId = null, int $horizonDays = 90): array
     {
-        $today = Carbon::today();
+        $today = AppTime::today();
 
         // SKT'li, stokta olan lotlar (kullanılabilir + karantina)
         $lotRows = StockMovement::where('company_id', $companyId)
@@ -126,7 +128,7 @@ class ExpiryService
             'created_by'       => $user->id,
             'updated_by'       => $user->id,
             'title'            => "SKT: {$product->name}" . ($data['lot_number'] ? " ({$data['lot_number']})" : '') . " — {$label}",
-            'description'      => $data['note'] ?? 'SKT / FEFO önerisinden oluşturuldu.',
+            'description'      => $data['note'] ?? 'SKT / FIFO önerisinden oluşturuldu.',
             'type'             => $data['type'] === 'transfer' ? 'transfer' : 'damage',
             'status'           => 'pending',
             'priority'         => 'high',
@@ -191,7 +193,7 @@ class ExpiryService
             return ['recommendation' => 'Karantinada: QC\'yi hızlandır', 'action' => null];
         }
         if ($lot['loss_qty'] <= 0) {
-            return ['recommendation' => 'FEFO sırasında tüketilecek', 'action' => null];
+            return ['recommendation' => 'FIFO sırasında tüketilecek', 'action' => null];
         }
 
         // Başka depoda SKT'den önce ne kadar tüketilebilir?
@@ -232,7 +234,13 @@ class ExpiryService
         ];
     }
 
-    /** Belgedeki gibi ürün cümlesi: "126 adet … SKT'si 23 gün içinde doluyor … 48 adet için kayıp riski". */
+    /**
+     * Ürün başına öne çıkan cümle; riskler lot bazında ayrı ayrı yazılır.
+     *
+     * Eskiden yakın SKT'li lotların miktarı toplanıp tek cümlede veriliyor, kayıp
+     * riski ise ürünün tüm lotlarının toplamı oluyordu. "50 adetlik lot için 100 adet
+     * kayıp riski" gibi okunuyordu. Artık her lot kendi miktarı ve riskiyle yazılır.
+     */
     private function productHeadlines(Collection $lots): Collection
     {
         $critical = (int) config('stock.expiry_levels.critical', 30);
@@ -247,14 +255,33 @@ class ExpiryService
                 $unit     = $first['unit'];
                 $parts    = [];
 
+                // Aynı lot numarası birden çok depoda olabiliyor; depo adı ayırt eder
+                $cokDepolu = $rows->pluck('warehouse_name')->filter()->unique()->count() > 1;
+                $lotAdi = function (array $r) use ($cokDepolu) {
+                    $ad = $r['lot_number'] ? "{$r['lot_number']} lotu" : 'Lotsuz stok';
+
+                    return $cokDepolu && $r['warehouse_name'] ? "{$ad} ({$r['warehouse_name']})" : $ad;
+                };
+
                 if ($expired > 0) {
-                    $parts[] = "{$this->fmt($expired)} {$unit} {$first['name']} ürününün SKT'si geçmiş.";
+                    $parts[] = "{$first['name']}: {$this->fmt($expired)} {$unit} SKT'si geçmiş stok var.";
+                    foreach ($rows->where('days_to_expiry', '<', 0)->sortBy('days_to_expiry') as $r) {
+                        $gun = abs((int) $r['days_to_expiry']);
+                        $parts[] = "{$lotAdi($r)}: {$this->fmt($r['quantity'])} {$unit}, SKT {$gun} gün önce doldu.";
+                    }
                 }
-                if ($soon->isNotEmpty()) {
-                    $parts[] = "{$this->fmt($soon->sum('quantity'))} {$unit} {$first['name']} ürününün SKT'si {$soon->max('days_to_expiry')} gün içinde doluyor.";
+
+                foreach ($soon->sortBy('days_to_expiry') as $r) {
+                    $cumle = "{$lotAdi($r)}: {$this->fmt($r['quantity'])} {$unit}, SKT {$r['days_to_expiry']} gün içinde doluyor";
+                    // Kayıp riski lotun kendi miktarından hesaplanır, ürün toplamından değil
+                    $cumle .= ($r['loss_qty'] ?? 0) > 0
+                        ? ", mevcut tüketim hızında yaklaşık {$this->fmt($r['loss_qty'])} {$unit} kayıp riski."
+                        : ', tüketim hızına göre kayıp beklenmiyor.';
+                    $parts[] = $cumle;
                 }
-                if ($loss - $expired > 0) {
-                    $parts[] = "Mevcut tüketim hızında yaklaşık {$this->fmt($loss - $expired)} {$unit} için kayıp riski bulunuyor.";
+
+                if ($expired <= 0 && $soon->isNotEmpty()) {
+                    array_unshift($parts, "{$first['name']}:");
                 }
 
                 return [
@@ -262,7 +289,7 @@ class ExpiryService
                     'name'       => $first['name'],
                     'loss_qty'   => round($loss, 3),
                     'loss_value' => round($rows->sum('loss_value'), 2),
-                    'headline'   => implode(' ', $parts),
+                    'headline'   => trim(implode(' ', $parts)),
                 ];
             })
             ->filter(fn($p) => $p['headline'] !== '')

@@ -36,9 +36,16 @@ class DepartmentController extends Controller
         return response()->json(['success' => true, 'data' => DepartmentResource::collection($departments)]);
     }
 
+    /**
+     * Yeni departman yalnızca platform tarafından açılır.
+     * Departmanlar hizmetin modülleridir; şirket sahibi kendi başına yeni modül ekleyemez,
+     * mevcut departmanları düzenleyebilir ve kullanıcılarını yönetebilir.
+     */
     public function store(Request $request): JsonResponse
     {
-        abort_unless($request->user()->hasPermission('company.departments.create'), 403);
+        if ($denied = $this->denyNonPlatform($request, 'açma', 'DEPARTMENT_CREATE_RESTRICTED')) {
+            return $denied;
+        }
 
         $request->validate([
             'name'        => ['required', 'string', 'max:100'],
@@ -102,9 +109,15 @@ class DepartmentController extends Controller
         ]);
     }
 
+    /**
+     * Departman silme de platforma aittir: açma yetkisi platformdaysa kapatma da orada olmalı.
+     * Şirket tarafı departmanı "Pasif" duruma alarak kullanım dışı bırakabilir (update).
+     */
     public function destroy(Request $request, string $id): JsonResponse
     {
-        abort_unless($request->user()->hasPermission('company.departments.delete'), 403);
+        if ($denied = $this->denyNonPlatform($request, 'silme', 'DEPARTMENT_DELETE_RESTRICTED')) {
+            return $denied;
+        }
 
         $dept = Department::where('company_id', $request->user()->company_id)->findOrFail($id);
 
@@ -119,5 +132,44 @@ class DepartmentController extends Controller
         $this->activityLogService->log('department.deleted', $dept, $request->user());
 
         return response()->json(['success' => true, 'message' => 'Departman silindi.']);
+    }
+
+    /**
+     * Departman açma/silme platform ekibine aittir. Uygunsa null döner, değilse hazır 403 yanıtı.
+     *
+     * Platform ekibi bu işlemleri şirket paneline bağlanarak yapar; o oturumda jeton şirket
+     * sahibine aittir, bu yüzden isPlatformUser() değil actsAsPlatform() kontrol edilir.
+     * Şirket kaydı olmayan bir istek departmanı sahipsiz oluşturacağından ayrıca engellenir.
+     */
+    private function denyNonPlatform(Request $request, string $action, string $code): ?JsonResponse
+    {
+        $user = $request->user();
+
+        if (!$user->actsAsPlatform()) {
+            $hint = $action === 'silme'
+                ? 'Departmanı pasife alabilir veya destek üzerinden talep açabilirsiniz.'
+                : 'Talebinizi destek üzerinden iletin.';
+
+            return response()->json([
+                'success' => false,
+                'message' => "Departman {$action} yetkisi platform ekibindedir. {$hint}",
+                'code'    => $code,
+            ], 403);
+        }
+
+        if (!$user->isImpersonatedByPlatform()
+            && !($user->isSuperAdmin() || $user->hasPermission('platform.modules.manage'))) {
+            abort(403);
+        }
+
+        if ($user->company_id === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bu işlem için şirket panelinde olmanız gerekir. Şirketler sayfasından ilgili şirkete bağlanın.',
+                'code'    => 'DEPARTMENT_COMPANY_CONTEXT_REQUIRED',
+            ], 422);
+        }
+
+        return null;
     }
 }

@@ -130,7 +130,16 @@ export function KpiPanel() {
                       <tr className="bg-zinc-50/60 dark:bg-zinc-900/60">
                         <td />
                         <td colSpan={5} className="px-3 py-2.5">
-                          <p className="text-[11px] font-semibold text-zinc-500 mb-1">Nedenler / en çok katkı yapanlar</p>
+                          {/* Liste örnektir: en çok katkı yapan ilk birkaç satır. Kart değeriyle
+                              aynı sayıda satır beklenmesin diye kapsamı açıkça yazılır. */}
+                          <p className="text-[11px] font-semibold text-zinc-500 mb-1">
+                            Nedenler / en çok katkı yapanlar
+                            {typeof k.current === 'number' && k.current > k.drivers.length && (
+                              <span className="ml-1 font-normal text-zinc-400">
+                                — toplam {k.current} kayıttan ilk {k.drivers.length}&apos;i
+                              </span>
+                            )}
+                          </p>
                           <ul className="space-y-0.5">
                             {k.drivers.map((d, i) => <li key={i} className="text-xs text-zinc-600 dark:text-zinc-300">• {d}</li>)}
                           </ul>

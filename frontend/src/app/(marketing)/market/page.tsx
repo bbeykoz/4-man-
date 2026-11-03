@@ -60,7 +60,7 @@ const FEATURES = [
   {
     icon: CalendarClock,
     title: 'Son kullanma ve ölü stok',
-    text: 'Lot bazında SKT takibi, FEFO ile ilk çıkacak lotun seçilmesi, hareketsiz ürünlerin ve bağlı sermayenin raporlanması.',
+    text: 'Lot bazında SKT takibi, FIFO ile ilk çıkacak lotun seçilmesi, hareketsiz ürünlerin ve bağlı sermayenin raporlanması.',
   },
   {
     icon: ShieldAlert,
@@ -102,7 +102,7 @@ const PRICING_PLANS = [
     features: [
       { text: 'Sınırsız ürün ve hareket kaydı' },
       { text: 'Kalite kontrol ve karantina' },
-      { text: 'SKT takibi, FEFO ve ölü stok' },
+      { text: 'SKT takibi, FIFO ve ölü stok' },
       { text: 'Satın alma ve tedarikçi performansı' },
       { text: 'On iki Excel raporu' },
     ],
@@ -193,7 +193,7 @@ const FAQ_CATEGORIES = [
       {
         question: 'Son kullanma tarihi olan ürünlerde hangi lot çıkar?',
         answer:
-          'FEFO kuralı uygulanır: tarihi en yakın lot önce çıkar. Sistem çıkışta hangi lottan ne kadar düşüleceğini kendisi önerir.',
+          'FIFO kuralı uygulanır: tarihi en yakın lot önce çıkar. Sistem çıkışta hangi lottan ne kadar düşüleceğini kendisi önerir.',
       },
       {
         question: 'Yapay zekâ stoğu kendi başına değiştirir mi?',

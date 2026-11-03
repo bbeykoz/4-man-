@@ -2,6 +2,8 @@
 
 namespace App\Services\Stock;
 
+use App\Support\AppTime;
+
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use App\Support\TurkishSuffix;
@@ -14,12 +16,18 @@ use Illuminate\Support\Collection;
  */
 class SupplierPerformanceService
 {
+    /** "Gerçek süreyi kullan" için gereken en az teslim alınmış sipariş sayısı. */
+    private const MIN_TESLIMAT = 3;
+
+    /** Planlamada kabul edilebilir en düşük ortalama tedarik süresi (gün). */
+    private const MIN_TEDARIK_GUN = 1;
+
     /** Skor ağırlıkları (toplam 1) */
     private const WEIGHTS = ['on_time' => 0.35, 'fill' => 0.25, 'quality' => 0.25, 'price' => 0.15];
 
     public function analyze(string $companyId, int $days = 180): array
     {
-        $today = Carbon::today();
+        $today = AppTime::today();
         $since = $today->copy()->subDays($days);
 
         $orders = PurchaseOrder::forCompany($companyId)
@@ -56,7 +64,22 @@ class SupplierPerformanceService
     public function applyActualLeadTime(string $companyId, string $supplierId, int $days = 180): Supplier
     {
         $row = collect($this->analyze($companyId, $days)['suppliers'])->firstWhere('supplier_id', $supplierId);
-        abort_unless($row && $row['avg_lead_time'] !== null, 422, 'Bu tedarikçi için yeterli teslim verisi yok.');
+        abort_unless($row && $row['avg_lead_time'] !== null, 422, 'Bu tedarikçi için teslim verisi yok.');
+
+        // Birkaç siparişten çıkan ortalama planlama için güvenilir değil. Özellikle
+        // aynı gün teslim alınan siparişler 0 gün üretiyor; bu değerle risk ve sipariş
+        // hesapları tedarik süresi yokmuş gibi yapılırdı.
+        abort_unless(
+            ($row['delivered'] ?? 0) >= self::MIN_TESLIMAT,
+            422,
+            'Yeterli teslim verisi yok: en az ' . self::MIN_TESLIMAT . ' teslim alınmış sipariş gerekir (şu an ' . ($row['delivered'] ?? 0) . ').',
+        );
+
+        abort_unless(
+            $row['avg_lead_time'] >= self::MIN_TEDARIK_GUN,
+            422,
+            'Gerçekleşen ortalama ' . $row['avg_lead_time'] . ' gün. Planlama için en az ' . self::MIN_TEDARIK_GUN . ' gün gerekir; süreyi elle girin.',
+        );
 
         $supplier = Supplier::forCompany($companyId)->findOrFail($supplierId);
         $supplier->update(['default_lead_time_days' => max(1, (int) round($row['avg_lead_time']))]);
@@ -76,6 +99,10 @@ class SupplierPerformanceService
         $ordered  = (float) $po->items->sum('quantity');
         $good     = (float) $po->items->sum('received_qty');
         $damaged  = (float) $po->items->sum('damaged_qty');
+        // Kalite kontrolde reddedilen ya da girişi iptal edilen miktar; kabul edilmiş sayılmaz
+        $rejected = (float) $po->items->sum('rejected_qty');
+        // Gerçekleşen harcama: yalnız kabul edilen miktarın tutarı
+        $accepted = (float) $po->items->sum(fn($i) => (float) $i->received_qty * (float) ($i->unit_price ?? 0));
         $closed   = $po->status === PurchaseOrder::STATUS_RECEIVED;
         $open     = in_array($po->status, PurchaseOrder::OPEN_STATUSES, true);
         $overdue  = $open && !$firstReceipt && $expected && $expected->lt($today);
@@ -90,7 +117,10 @@ class SupplierPerformanceService
 
         return [
             'supplier_id'  => $po->supplier_id,
-            'lead_time'    => $firstReceipt && $orderDate ? max(0, (int) $orderDate->diffInDays($firstReceipt->copy()->startOfDay())) : null,
+            // Gün farkı takvim günü üzerinden; saat kısmı kalırsa süre aşağı yuvarlanıyordu
+            'lead_time'    => $firstReceipt && $orderDate
+                ? max(0, AppTime::daysBetween($orderDate, $firstReceipt) ?? 0)
+                : null,
             'on_time'      => $onTime,
             'delay_days'   => $delay,
             'overdue'      => $overdue,
@@ -98,6 +128,8 @@ class SupplierPerformanceService
             'ordered'      => $ordered,
             'good'         => $good,
             'damaged'      => $damaged,
+            'rejected'     => $rejected,
+            'accepted_amount' => $accepted,
             'short'        => $closed && ($good + $damaged) < $ordered - 0.0005, // kalanı iptal edilerek kapatıldı
             'in_full'      => $closed && ($good + $damaged) >= $ordered - 0.0005 && $damaged <= 0,
             'otif'         => $onTime === true && $closed && ($good + $damaged) >= $ordered - 0.0005 && $damaged <= 0
@@ -118,8 +150,10 @@ class SupplierPerformanceService
 
         $onTimeRate = $this->pct($judged->where('on_time', true)->count(), $judged->count());
         $fillRate   = $closed->sum('ordered') > 0 ? round($closed->sum('good') / $closed->sum('ordered') * 100, 1) : null;
-        $received   = $f->sum('good') + $f->sum('damaged');
-        $damageRate = $received > 0 ? round($f->sum('damaged') / $received * 100, 1) : null;
+        // Kalite sorunu = hasarlı + kalite kontrolde reddedilen
+        $received   = $f->sum('good') + $f->sum('damaged') + $f->sum('rejected');
+        $sorunlu    = $f->sum('damaged') + $f->sum('rejected');
+        $damageRate = $received > 0 ? round($sorunlu / $received * 100, 1) : null;
         $shortRate  = $this->pct($closed->where('short', true)->count(), $closed->count());
         $priceChg   = $this->priceChange($orders);
 
@@ -154,11 +188,16 @@ class SupplierPerformanceService
             'otif_rate'         => $this->pct($closed->where('otif', true)->count(), $closed->count()),
             'damage_rate'       => $damageRate,
             'price_change_pct'  => $priceChg,
-            'spend'             => round($orders->sum('total_amount'), 2),
+            // Harcama, kabul edilen miktarın tutarıdır; reddedilen mal için ödeme yapılmaz
+            'spend'             => round($f->sum('accepted_amount'), 2),
+            'ordered_amount'    => round($orders->sum('total_amount'), 2),
+            'rejected_qty'      => round($f->sum('rejected'), 3),
             'score'             => $score,
             'grade'             => $score === null ? null : ($score >= 85 ? 'A' : ($score >= 70 ? 'B' : ($score >= 50 ? 'C' : 'D'))),
             'lead_time_gap'     => $avgLead !== null && $declared ? round($avgLead - $declared, 1) : null,
-            'insights'          => $this->insights($supplier, $avgLead, $declared, $onTimeRate, $fillRate, $damageRate, $priceChg, $f->where('overdue', true)->count()),
+            'insights'          => $this->insights($supplier, $avgLead, $declared, $onTimeRate, $fillRate, $damageRate, $priceChg, $f->where('overdue', true)->count(), $delivered->count()),
+            // Arayüz "Gerçek süreyi kullan" düğmesini buna göre açar/kapatır
+            'lead_time_reliable'=> $delivered->count() >= self::MIN_TESLIMAT && $avgLead !== null && $avgLead >= self::MIN_TEDARIK_GUN,
         ];
     }
 
@@ -179,13 +218,21 @@ class SupplierPerformanceService
         return round($changes->sum(fn($c) => $c['pct'] * $c['qty']) / max(1, $changes->sum('qty')), 1);
     }
 
-    private function insights(Supplier $s, ?float $avgLead, ?int $declared, ?float $onTime, ?float $fill, ?float $damage, ?float $price, int $overdue): array
+    private function insights(Supplier $s, ?float $avgLead, ?int $declared, ?float $onTime, ?float $fill, ?float $damage, ?float $price, int $overdue, int $delivered = 0): array
     {
         $n   = fn(float $v) => rtrim(rtrim(number_format($v, 1, ',', '.'), '0'), ',');
         $out = [];
         if ($avgLead !== null && $declared && abs($avgLead - $declared) >= max(2, $declared * 0.2)) {
-            $out[] = "Beyan edilen teslim süresi {$declared} gün, gerçekleşen ortalama {$n($avgLead)} gün."
-                . ($avgLead > $declared ? ' Risk ve sipariş önerileri için gerçek süre kullanılmalı.' : '');
+            $yeterli = $delivered >= self::MIN_TESLIMAT && $avgLead >= self::MIN_TEDARIK_GUN;
+
+            $out[] = "Beyan edilen teslim süresi {$declared} gün, gerçekleşen ortalama {$n($avgLead)} gün ({$delivered} teslimat)."
+                . match (true) {
+                    // Az sayıda siparişten ya da 0 güne yakın ortalamadan çıkan öneri yanıltıcı
+                    $delivered < self::MIN_TESLIMAT => ' Örnek az (' . self::MIN_TESLIMAT . ' teslimat gerekir); süre güncellenmeden önce daha fazla sipariş beklenmeli.',
+                    $avgLead < self::MIN_TEDARIK_GUN => ' Ortalama planlama için fazla düşük; gerçek süre olarak uygulanmamalı.',
+                    $avgLead > $declared => ' Risk ve sipariş önerileri için gerçek süre kullanılmalı.',
+                    default => '',
+                };
         }
         if ($onTime !== null && $onTime < 80) {
             $out[] = 'Geç teslim oranı: %' . $n(100 - $onTime) . '.';
@@ -211,7 +258,7 @@ class SupplierPerformanceService
     /** Aynı ürün / ürün grubu birden fazla tedarikçiden alınıyorsa teslim hızı, zamanında teslim, fiyat ve hasar karşılaştırması. */
     private function comparisons(Collection $orders, Collection $suppliers): array
     {
-        $today = Carbon::today();
+        $today = AppTime::today();
         $lines = $orders->flatMap(function (PurchaseOrder $po) use ($today) {
             $facts = $this->orderFacts($po, $today);
 

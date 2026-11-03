@@ -110,7 +110,7 @@ export function ExpiryPanel() {
           <option value="">Tüm depolar</option>
           {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
-        <p className="text-xs text-zinc-400">Çıkışlar otomatik FEFO ile yapılır (SKT&apos;si en yakın lot önce).</p>
+        <p className="text-xs text-zinc-400">Çıkışlar otomatik FIFO ile yapılır (SKT&apos;si en yakın lot önce).</p>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">

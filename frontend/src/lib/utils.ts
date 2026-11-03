@@ -7,9 +7,27 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatDate(date: string | Date, fmt = 'dd.MM.yyyy'): string {
+// Sunucu saatleri UTC gelir; ekranda her zaman Türkiye saati gösterilir.
+// Böylece kullanıcının bilgisayarı başka bir saat diliminde olsa da kayıtlar aynı görünür.
+const DISPLAY_TZ = 'Europe/Istanbul'
+
+/** UTC gelen tarihi Türkiye saatine kaydırır (date-fns yerel saat varsayar). */
+function toDisplayZone(date: string | Date): Date {
   const d = typeof date === 'string' ? parseISO(date) : date
-  return format(d, fmt, { locale: tr })
+  const shown = new Date(d.toLocaleString('en-US', { timeZone: DISPLAY_TZ }))
+  return isNaN(shown.getTime()) ? d : shown
+}
+
+/**
+ * Bugünün tarihi (yyyy-MM-dd), Türkiye saatine göre.
+ * new Date().toISOString() UTC verdiği için gece 00:00–03:00 arası dünü gösteriyordu.
+ */
+export function todayInput(): string {
+  return format(toDisplayZone(new Date()), 'yyyy-MM-dd')
+}
+
+export function formatDate(date: string | Date, fmt = 'dd.MM.yyyy'): string {
+  return format(toDisplayZone(date), fmt, { locale: tr })
 }
 
 export function formatDateTime(date: string | Date): string {
@@ -17,6 +35,7 @@ export function formatDateTime(date: string | Date): string {
 }
 
 export function timeAgo(date: string | Date): string {
+  // Göreli süre mutlak zamanla hesaplanır; saat dilimi çevirisi gerekmez
   const d = typeof date === 'string' ? parseISO(date) : date
   return formatDistanceToNow(d, { addSuffix: true, locale: tr })
 }

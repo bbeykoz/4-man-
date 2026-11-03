@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1\SuperAdmin;
 
+use App\Support\AppTime;
+
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ActivityLogResource;
 use App\Http\Resources\UserResource;
@@ -52,7 +54,7 @@ class CompanyAccessController extends Controller
                     'tickets_total'  => Ticket::where('company_id', $company->id)->count(),
                     'conversations'  => Conversation::where('company_id', $company->id)->count(),
                     'messages'       => Message::whereIn('sender_id', $userIds)->count(),
-                    'activity_today' => ActivityLog::where('company_id', $company->id)->whereDate('created_at', today())->count(),
+                    'activity_today' => ActivityLog::where('company_id', $company->id)->whereBetween('created_at', AppTime::dayRangeUtc())->count(),
                 ],
             ],
         ]);
@@ -169,7 +171,13 @@ class CompanyAccessController extends Controller
             ], 422);
         }
 
-        $token = $owner->createToken('impersonation', ['*'], now()->addHours(2))->plainTextToken;
+        // Jetona sunucu tarafında işaretçi konur. Jeton adı istemciden gelen device_name ile
+        // belirlenebildiği için ada güvenilmez; yetki kontrolleri bu ability'ye bakar.
+        $token = $owner->createToken(
+            'impersonation',
+            ['*', User::IMPERSONATION_ABILITY],
+            now()->addHours(2),
+        )->plainTextToken;
 
         $this->logger->log(
             action: 'platform.company.impersonated',

@@ -3,7 +3,7 @@
 import { useCallback } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  Layers, SlidersHorizontal, ArrowLeftRight, Boxes, ShieldAlert, ShoppingCart, CalendarClock,
+  Layers, SlidersHorizontal, ArrowLeftRight, Boxes, Bookmark, ShieldAlert, ShoppingCart, CalendarClock,
   Shuffle, Siren, FlaskConical, Gauge, Grid3x3, LineChart, Package,
 } from 'lucide-react'
 
@@ -13,6 +13,7 @@ export const WAREHOUSE_TABS = [
   { id: 'stok',          label: 'Stok Kontrolü',          icon: SlidersHorizontal },
   { id: 'yukleme',       label: 'Yükleme – Boşaltma',     icon: ArrowLeftRight },
   { id: 'stok-durumu',   label: 'Stok Durumu',            icon: Boxes },
+  { id: 'booked',        label: 'Booked',                 icon: Bookmark },
   { id: 'stok-riski',    label: 'Stok Riski',             icon: ShieldAlert },
   { id: 'satin-alma',    label: 'Satın Alma',             icon: ShoppingCart },
   { id: 'skt-olu-stok',  label: 'SKT & Ölü Stok',         icon: CalendarClock },

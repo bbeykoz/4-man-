@@ -6,7 +6,7 @@ import { Providers } from './providers'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: { default: 'BytePanel', template: '%s | BytePanel' },
+  title: { default: 'Argus Tech', template: '%s | Argus Tech' },
   description: 'Kurumsal Yönetim Paneli',
 }
 

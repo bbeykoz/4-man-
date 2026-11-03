@@ -14,7 +14,7 @@ export function ExpiryDeadStockPanel() {
     <div className="space-y-4">
       <div className="inline-flex rounded-lg border border-zinc-200 dark:border-zinc-800 p-0.5 bg-zinc-50 dark:bg-zinc-900">
         {([
-          { id: 'expiry', label: 'SKT / FEFO', icon: CalendarClock },
+          { id: 'expiry', label: 'SKT / FIFO', icon: CalendarClock },
           { id: 'dead', label: 'Hareket Analizi (Ölü Stok)', icon: TrendingDown },
         ] as const).map(t => (
           <button

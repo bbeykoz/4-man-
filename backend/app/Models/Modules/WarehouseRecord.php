@@ -20,11 +20,18 @@ class WarehouseRecord extends Model
 {
     use HasFactory, HasUuid, SoftDeletes, HasRecordRelations, HasRecordNumber, HasActivityLog;
 
-    public const QC_PENDING = 'pending';
-    public const QC_PASSED  = 'passed';
+    public const QC_PENDING  = 'pending';
+    public const QC_PASSED   = 'passed';
+    /** Ürün kalite kontrolden geçemedi. Stok karantinada kalır, kullanılabilir stoğa geçmez. */
+    public const QC_REJECTED = 'rejected';
+
+    public const QC_STATUSES = [self::QC_PENDING, self::QC_PASSED, self::QC_REJECTED];
+
+    /** Kullanılabilir stoğa geçmeyen kalite kontrol durumları. */
+    public const QC_BLOCKING = [self::QC_PENDING, self::QC_REJECTED];
 
     /** Sadece kalite kontrol endpoint'i yazabilir; update() ile değiştirilemez. */
-    public const QC_FIELDS = ['qc_status', 'qc_photo_path', 'qc_photo_disk', 'qc_checked_by', 'qc_checked_at'];
+    public const QC_FIELDS = ['qc_status', 'qc_photo_path', 'qc_photo_disk', 'qc_checked_by', 'qc_checked_at', 'qc_note'];
 
     /** Sadece imza endpoint'i yazabilir. */
     public const SIGNATURE_FIELDS = ['signature_path', 'signature_disk', 'signed_by_name', 'signed_by', 'signed_at'];

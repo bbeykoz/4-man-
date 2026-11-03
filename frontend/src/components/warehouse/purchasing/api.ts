@@ -40,6 +40,10 @@ export interface Suggestion {
   unit_price: number | null
   estimated_amount: number | null
   reason: string
+  /** İhtiyacın yoğunlaştığı depo; teslim deposu bununla önerilir. */
+  need_warehouse_id: string | null
+  need_warehouse_name: string | null
+  warehouse_breakdown: { warehouse_id: string; warehouse_name: string; available: number; daily: number; shortfall: number }[]
 }
 
 export interface PoItem {

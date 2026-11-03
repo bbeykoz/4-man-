@@ -56,7 +56,7 @@ class UserService
             // Hoşgeldin bildirimi
             $this->notificationService->send(
                 user: $user,
-                title: 'BytePanel\'e Hoş Geldiniz!',
+                title: 'Argus Tech\'e Hoş Geldiniz!',
                 body: "Hesabınız oluşturuldu. Geçici şifreniz: {$password}",
                 type: 'info',
             );

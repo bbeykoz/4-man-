@@ -2,6 +2,9 @@
 
 namespace App\Services\Stock;
 
+use App\Support\AppTime;
+
+use App\Models\StockMovement;
 use App\Models\WarehouseProduct;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -22,9 +25,25 @@ class StockRiskService
      * @param array{demand_factor?: float, lead_time_extra_days?: int, safety_factor?: float} $modifiers
      * @return Collection<int, array>
      */
+    private const EPSILON = 0.0005;
+
+    /** İkinci en yüksek risk bileşeninin skora katkı ağırlığı (kalan boşluğun oranı). */
+    private const SECONDARY_WEIGHT = 0.35;
+
     public function assessCompany(string $companyId, ?string $warehouseId = null, array $modifiers = []): Collection
     {
-        $products = WarehouseProduct::forCompany($companyId)->active()->with('defaultSupplier:id,name,default_lead_time_days')->orderBy('name')->get();
+        // Depo seçiliyse yalnız o depoda hareket görmüş ürünler değerlendirilir.
+        // Aksi hâlde o depoda hiç bulunmayan ürünler "stok yok" sayılıp kritik görünür
+        // ve yanlış depoya sipariş önerilirdi.
+        $products = WarehouseProduct::forCompany($companyId)
+            ->active()
+            ->when($warehouseId, fn($q) => $q->whereIn('id', StockMovement::where('company_id', $companyId)
+                ->where('warehouse_id', $warehouseId)
+                ->distinct()
+                ->pluck('product_id')))
+            ->with('defaultSupplier:id,name,default_lead_time_days')
+            ->orderBy('name')
+            ->get();
         $metrics  = $this->metrics->forProducts($companyId, $warehouseId, $products->pluck('id')->all());
 
         return $products->map(fn(WarehouseProduct $p) => $this->assess($p, $metrics[$p->id], $modifiers));
@@ -46,11 +65,17 @@ class StockRiskService
         $onOrder     = (float) ($m['on_order'] ?? 0);  // tedarikçiye gönderilmiş, gelmemiş
         $inDraft     = (float) ($m['in_draft'] ?? 0);  // taslak siparişte
         $pipeline    = $available + $onOrder;           // gelecek siparişler dahil stok
-        $daily       = (float) $m['daily_consumption'] * $demandFactor;
+        // Sipariş hesabında yuvarlanmamış değer kullanılır (yuvarlanmışla çarpım
+        // 1 birim fazla öneriye yol açıyordu); ekrana basılan değer yine yuvarlı.
+        $daily       = (float) ($m['daily_consumption_exact'] ?? $m['daily_consumption']) * $demandFactor;
         $dailyStd    = (float) $m['daily_std'] * $demandFactor;
         $unit        = $product->unit ?: 'adet';
 
-        $daysOfCover = $daily > 0 ? $available / $daily : null;
+        // Stok yoksa kapsam 0 gündür. Eskiden null dönüp arayüzde "∞" görünüyordu;
+        // aynı satırda "kritik" yazarken sonsuz gün göstermek yanıltıcıydı.
+        // null yalnız "stok var ama tüketim yok" durumunda kalır.
+        $outOfStock  = $available <= self::EPSILON;
+        $daysOfCover = $outOfStock ? 0.0 : ($daily > 0 ? $available / $daily : null);
 
         // 1) Tükenme olasılığı; talep ~ N(μ, σ). İki durumun kötüsü:
         //    a) açık sipariş gelmeden eldeki stok biter mi (beklenen teslime kadar)
@@ -89,16 +114,37 @@ class StockRiskService
             $reorderScore = (int) round(30 + 29 * (1 - min(1, ($pipeline / $daily) / ($leadTime + $review))));
         }
 
+        // Tükenme bileşeni iki parçalı: olasılık 0–85 bandında, kalan 15 puan açığın derinliği.
+        // Olasılık 1'e dayandığında bile daha uzun tedarik süresi ya da daha yüksek talep
+        // açığı büyüttüğü için skor yükselmeye devam eder (tavana yapışıp donmaz).
+        $expectedDemand = $daily * $leadTime;
+        $gapRatio       = $expectedDemand > 0 ? max(0.0, ($expectedDemand - $pipeline) / $expectedDemand) : 0.0;
+
         $components = [
-            'stockout'  => (int) round($stockoutProb * 100),
+            'stockout'  => (int) round($stockoutProb * 85 + $gapRatio * 15),
             'below_min' => $belowScore,
             'expiry'    => (int) round($expiryShare * 80),
             'reorder'   => $reorderScore,
         ];
         arsort($components);
         $driver = array_key_first($components);
-        $score  = max(0, min(100, $components[$driver]));
-        if ($score === 0) {
+
+        // Stoğu bitmiş ürün, min stok tanımlı olmadığı için skoru 0 çıkabiliyordu ve
+        // listede "Düşük risk" görünüyordu. Böyle satırlar sürükleyen olarak
+        // "stok yok" ile işaretlenir; skoru şişirmeden durum görünür olur.
+        if ($outOfStock && $onOrder <= self::EPSILON && $components[$driver] === 0) {
+            $driver = 'out_of_stock';
+        }
+
+        // Baskın bileşen skoru belirler; ikinci en yüksek bileşen kalan boşluğun bir kısmını
+        // doldurur. Böylece sabit puanlı bir bileşen (ör. güvenlik stoğu altı) diğerlerinin
+        // kötüleşmesini gizlemez: aynı senaryoya tedarik süresi eklenince skor artar.
+        $ordered  = array_values($components);
+        $top      = $ordered[0];
+        $second   = $ordered[1] ?? 0;
+        $score    = (int) round(min(100, $top + (100 - $top) * ($second / 100) * self::SECONDARY_WEIGHT));
+        $score    = max(0, $score);
+        if ($score === 0 && $driver !== 'out_of_stock') {
             $driver = null;
         }
 
@@ -122,7 +168,10 @@ class StockRiskService
             'order_multiple'     => $product->order_multiple,
             'unit_price'         => $product->unit_price !== null ? (float) $product->unit_price : null,
             'daily_consumption'  => round($daily, 3),
+            'consumption_days'   => $m['consumption_days'] ?? null,
+            'consumption_blended'=> $m['consumption_blended'] ?? false,
             'days_of_cover'      => $daysOfCover !== null ? round($daysOfCover, 1) : null,
+            'out_of_stock'       => $outOfStock,
             'lead_time_days'     => $leadTime,
             'lead_time_estimated'=> !$leadTimeSet,
             'safety_stock'       => $safety,
@@ -156,7 +205,7 @@ class StockRiskService
     /** Skoru günlük olarak saklar (risk trendi). Aynı gün tekrar çalışırsa üzerine yazar. */
     public function snapshot(string $companyId, ?Carbon $date = null): int
     {
-        $date = ($date ?? Carbon::today())->toDateString();
+        $date = ($date ?? AppTime::today())->toDateString();
         $rows = $this->assessCompany($companyId)->map(fn($r) => [
             'company_id'        => $companyId,
             'product_id'        => $r['product_id'],
@@ -202,7 +251,7 @@ class StockRiskService
      */
     private function expiryRisk(array $lots, float $daily): array
     {
-        $today   = Carbon::today();
+        $today   = AppTime::today();
         $atRisk  = 0.0;
         $cursor  = 0.0; // lotun tüketimine başlanacak gün
         $nearest = null;
@@ -296,7 +345,7 @@ class StockRiskService
             return "Siparişte {$this->fmt($onOrder)} {$unit} var, teslimi takip et";
         }
         if ($driver === 'expiry' && $score >= 30) {
-            return "FEFO: {$this->fmt($expiry['qty'])} {$unit} için öncelikli sevk / kampanya";
+            return "FIFO: {$this->fmt($expiry['qty'])} {$unit} için öncelikli sevk / kampanya";
         }
         if ($score >= 30) {
             return 'İzle';

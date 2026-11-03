@@ -2,6 +2,8 @@
 
 namespace App\Services\Stock;
 
+use App\Support\AppTime;
+
 use App\Models\Modules\WarehouseRecord;
 use App\Models\StockAnomaly;
 use App\Models\StockMovement;
@@ -30,6 +32,8 @@ class AnomalyService
         'user_reversals'      => 'Sık iptal (kullanıcı)',
         'user_adjustments'    => 'Sık düzeltme (kullanıcı)',
         'off_hours'           => 'Mesai dışı işlem',
+        'stock_wipe'          => 'Stoğun tamamına yakını tek kayıtta çıktı',
+        'expired_shipment'    => 'SKT geçmiş lot sevk edildi',
     ];
 
     private array $cfg;
@@ -38,13 +42,13 @@ class AnomalyService
     public function __construct(private readonly NotificationService $notifications)
     {
         $this->cfg   = config('stock.anomaly');
-        $this->today = Carbon::today();
+        $this->today = AppTime::today();
     }
 
     /** Tüm dedektörleri çalıştırır, sonuçları saklar, yeni ve önemli olanları bildirir. */
     public function scan(string $companyId): array
     {
-        $this->today = Carbon::today();
+        $this->today = AppTime::today();
         $ctx = [
             'products'   => WarehouseProduct::withTrashed()->where('company_id', $companyId)->get(['id', 'name', 'unit'])->keyBy('id'),
             'warehouses' => Warehouse::withTrashed()->where('company_id', $companyId)->pluck('name', 'id'),
@@ -59,7 +63,9 @@ class AnomalyService
             ->merge($this->countVariances($companyId, $ctx))
             ->merge($this->frequentAdjustments($companyId, $ctx))
             ->merge($this->userBehaviour($companyId, $ctx))
-            ->merge($this->offHours($companyId, $ctx));
+            ->merge($this->offHours($companyId, $ctx))
+            ->merge($this->stockWipes($companyId, $ctx))
+            ->merge($this->expiredShipments($companyId, $ctx));
 
         $new = collect();
         foreach ($candidates as $c) {
@@ -304,10 +310,15 @@ class AnomalyService
         $since = $this->today->copy()->subDays(29);
         $week  = $this->today->format('o-\WW');
 
-        $reversals = StockMovement::where('company_id', $companyId)
-            ->where('movement_type', 'reversal')->where('created_at', '>=', $since)->whereNotNull('created_by')
-            ->groupBy('created_by')
-            ->get(['created_by', DB::raw('COUNT(DISTINCT record_id) as n')])
+        // İptaller kaydın kendisinden sayılır: eskiden yalnız "reversal" defter satırı
+        // olanlar görülüyordu, yani stoğa hiç işlenmemiş kayıtların iptali atlanıyordu.
+        // Sayım iptali yapan kullanıcıya (updated_by) yazılır.
+        $reversals = WarehouseRecord::where('company_id', $companyId)
+            ->where('status', 'cancelled')
+            ->where('updated_at', '>=', $since)
+            ->whereNotNull('updated_by')
+            ->groupBy('updated_by')
+            ->get([DB::raw('updated_by as created_by'), DB::raw('COUNT(*) as n')])
             ->pluck('n', 'created_by');
 
         $adjustments = WarehouseRecord::where('company_id', $companyId)
@@ -318,12 +329,15 @@ class AnomalyService
             ->pluck('n', 'created_by');
 
         $out = collect();
-        foreach (['user_reversals' => [$reversals, 'işlenmiş kaydı iptal etti'], 'user_adjustments' => [$adjustments, 'azalış düzeltmesi yaptı']] as $type => [$counts, $verb]) {
+        foreach (['user_reversals' => [$reversals, 'kaydı iptal etti'], 'user_adjustments' => [$adjustments, 'azalış düzeltmesi yaptı']] as $type => [$counts, $verb]) {
             foreach ($counts as $userId => $n) {
                 $n      = (int) $n;
                 $others = $counts->except($userId)->map(fn($v) => (int) $v)->values();
-                // Kıyaslanacak kullanıcı yoksa daha yüksek eşik
-                $minEvents = $others->isEmpty() ? $this->cfg['user_min_events'] * 2 : $this->cfg['user_min_events'];
+                // Kıyaslanacak kullanıcı yoksa biraz daha yüksek eşik. Eskiden iki katıydı
+                // (6) ve tek kullanıcılı kurulumlarda 5 iptal fark edilmiyordu.
+                $minEvents = $others->isEmpty()
+                    ? $this->cfg['user_min_events'] + 1
+                    : $this->cfg['user_min_events'];
                 if ($n < $minEvents) {
                     continue;
                 }
@@ -380,6 +394,123 @@ class AnomalyService
             ->whereNull('warehouse_records.reversed_at')
             ->where('stock_movements.movement_type', 'stock_out')
             ->where('stock_movements.bucket', StockMovement::BUCKET_AVAILABLE);
+    }
+
+    /**
+     * Tek kayıtla stoğun tamamına yakınının çıkması.
+     *
+     * "Büyük tek kayıt" dedektörü geçmiş kayıt sayısı 5'in altındaysa çalışmıyor,
+     * bu yüzden yeni ürünlerde stoğun tamamının silinmesi yakalanmıyordu. Bu kontrol
+     * geçmiş gerektirmez: çıkış anındaki bakiyeye oranına bakar.
+     */
+    private function stockWipes(string $companyId, array $ctx): Collection
+    {
+        $scanStart = $this->today->copy()->subDays($this->cfg['scan_days'] - 1);
+
+        $rows = StockMovement::query()
+            ->where('stock_movements.company_id', $companyId)
+            ->join('warehouse_records', 'warehouse_records.id', '=', 'stock_movements.record_id')
+            ->whereNull('warehouse_records.reversed_at')
+            // Serbest stoğu azaltan her satır: doğrudan çıkış/hasar ya da siparişe
+            // rezerve (Booked akışında çıkış rezerve kovasından yapılıyor).
+            ->whereIn('stock_movements.movement_type', ['stock_out', 'damage', 'reserve'])
+            ->where('stock_movements.bucket', StockMovement::BUCKET_AVAILABLE)
+            ->where('stock_movements.quantity', '<', 0)
+            ->where('stock_movements.occurred_at', '>=', $scanStart)
+            ->orderBy('stock_movements.occurred_at')
+            ->get([
+                'stock_movements.id', 'stock_movements.product_id', 'stock_movements.warehouse_id',
+                'stock_movements.quantity', 'stock_movements.occurred_at', 'stock_movements.record_id',
+                'warehouse_records.record_number', 'warehouse_records.created_by',
+            ]);
+
+        $out = collect();
+        foreach ($rows as $r) {
+            $cikan = abs((float) $r->quantity);
+            if ($cikan < $this->cfg['stock_wipe_min_qty']) {
+                continue;
+            }
+
+            // Hareketten hemen önceki bakiye
+            $oncesi = (float) StockMovement::forCompany($companyId)
+                ->where('product_id', $r->product_id)
+                ->where('warehouse_id', $r->warehouse_id)
+                ->where('bucket', StockMovement::BUCKET_AVAILABLE)
+                ->where('occurred_at', '<=', $r->occurred_at)
+                ->where('id', '!=', $r->id)
+                ->sum('quantity');
+
+            if ($oncesi <= 0 || $cikan / $oncesi < $this->cfg['stock_wipe_ratio']) {
+                continue;
+            }
+
+            $product = $ctx['products'][$r->product_id] ?? null;
+            $oran    = round($cikan / $oncesi * 100);
+            $kalan   = round($oncesi - $cikan, 3);
+
+            $out->push($this->candidate(
+                'stock_wipe',
+                (string) $r->id,
+                $oran >= 100 ? 80 : 65,
+                sprintf(
+                    '%s: %s %s tek kayıtla çıktı — depodaki stoğun %%%s\'i (kalan %s). Yanlış miktar ya da hatalı işlem olabilir.',
+                    $r->record_number,
+                    $product?->name ?? 'Ürün',
+                    $this->fmt($cikan) . ' ' . ($product?->unit ?: 'adet'),
+                    $oran,
+                    $this->fmt(max(0, $kalan)),
+                ),
+                Carbon::parse($r->occurred_at),
+                ['product_id' => $r->product_id, 'warehouse_id' => $r->warehouse_id, 'record_id' => $r->record_id, 'user_id' => $r->created_by],
+                ['quantity' => $cikan, 'before' => round($oncesi, 3), 'ratio_pct' => $oran],
+            ));
+        }
+
+        return $out;
+    }
+
+    /** Son kullanma tarihi geçmiş lotun çıkış yapılması (satış/sevkiyat). */
+    private function expiredShipments(string $companyId, array $ctx): Collection
+    {
+        $scanStart = $this->today->copy()->subDays($this->cfg['scan_days'] - 1);
+
+        $rows = StockMovement::query()
+            ->where('stock_movements.company_id', $companyId)
+            ->join('warehouse_records', 'warehouse_records.id', '=', 'stock_movements.record_id')
+            ->whereNull('warehouse_records.reversed_at')
+            ->where('stock_movements.movement_type', 'stock_out')
+            ->whereNotNull('stock_movements.expiry_date')
+            ->where('stock_movements.occurred_at', '>=', $scanStart)
+            ->whereColumn('stock_movements.expiry_date', '<', 'stock_movements.occurred_at')
+            ->get([
+                'stock_movements.id', 'stock_movements.product_id', 'stock_movements.warehouse_id',
+                'stock_movements.quantity', 'stock_movements.occurred_at', 'stock_movements.record_id',
+                'stock_movements.lot_number', 'stock_movements.expiry_date',
+                'warehouse_records.record_number', 'warehouse_records.created_by',
+            ]);
+
+        return $rows->map(function ($r) use ($ctx) {
+            $product = $ctx['products'][$r->product_id] ?? null;
+            $gun     = AppTime::daysBetween($r->expiry_date, $r->occurred_at) ?? 0;
+            $lot     = $r->lot_number ? "{$r->lot_number} lotu" : 'lotsuz stok';
+
+            return $this->candidate(
+                'expired_shipment',
+                (string) $r->id,
+                90,
+                sprintf(
+                    '%s: %s — %s, SKT\'si %s gün önce dolmuş olmasına rağmen %s çıkış yapıldı. Sevkiyat durdurulup incelenmeli.',
+                    $r->record_number,
+                    $product?->name ?? 'Ürün',
+                    $lot,
+                    $gun,
+                    $this->fmt(abs((float) $r->quantity)) . ' ' . ($product?->unit ?: 'adet'),
+                ),
+                Carbon::parse($r->occurred_at),
+                ['product_id' => $r->product_id, 'warehouse_id' => $r->warehouse_id, 'record_id' => $r->record_id, 'user_id' => $r->created_by],
+                ['quantity' => abs((float) $r->quantity), 'expired_days' => $gun, 'lot' => $r->lot_number],
+            );
+        });
     }
 
     private function candidate(string $type, string $key, int $severity, string $message, Carbon $day, array $refs, array $metrics): array

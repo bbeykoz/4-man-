@@ -2,6 +2,8 @@
 
 namespace App\Services\Stock;
 
+use App\Support\AppTime;
+
 use App\Models\Modules\WarehouseRecord;
 use App\Models\PurchaseOrder;
 use App\Models\StockMovement;
@@ -26,7 +28,7 @@ class WarehouseKpiService
 
     public function report(string $companyId, int $periodDays = 30, ?string $warehouseId = null): array
     {
-        $today = Carbon::today();
+        $today = AppTime::today();
         $cur   = [$today->copy()->subDays($periodDays - 1)->startOfDay(), $today->copy()->endOfDay()];
         $prev  = [$cur[0]->copy()->subDays($periodDays), $cur[0]->copy()->subSecond()];
 
@@ -47,7 +49,7 @@ class WarehouseKpiService
                 fn($d, $v) => $v > 0 && ($d === null || $d >= 0) ? 'Restock önceliği artırılmalı.' : ($v > 0 ? 'Kritik ürün sayısı azalıyor.' : 'Kritik stoklu ürün yok.'),
                 $risky->sortByDesc('risk_score')->take(3)->map(fn($r) => "{$r['name']} (risk %{$r['risk_score']})")->values()->all()),
             $this->kpi('expiry_products', 'SKT riski taşıyan ürün', '', $expiryNow['products']->count(), null, false,
-                fn($d, $v) => $v > 0 ? 'FEFO aksiyonları gözden geçirilmeli.' : 'SKT riski yok.',
+                fn($d, $v) => $v > 0 ? 'FIFO aksiyonları gözden geçirilmeli.' : 'SKT riski yok.',
                 $expiryNow['products']->take(3)->pluck('headline')->all()),
             $this->kpi('damage_rate', 'Hasarlı ürün oranı', '%', $c['damage_rate'], $p['damage_rate'], false,
                 fn($d, $v) => ($d ?? $v) > 0.2 ? 'Anomali analizi önerilir.' : ($d !== null && $d < -0.2 ? 'Hasar oranı düşüyor.' : 'Hasar oranı düşük ve stabil.'),
@@ -100,7 +102,7 @@ class WarehouseKpiService
         // Dönem, işlemin iş tarihine (transaction_date) göre; yoksa stoğa işlendiği gün
         $records = WarehouseRecord::where('company_id', $companyId)
             ->whereNotNull('product_id')->whereNotNull('posted_at')->whereNull('reversed_at')
-            ->whereRaw('COALESCE(transaction_date, DATE(posted_at)) BETWEEN ? AND ?', [$from->toDateString(), $to->toDateString()])
+            ->whereRaw('COALESCE(transaction_date, DATE(' . AppTime::sqlLocal('posted_at') . ')) BETWEEN ? AND ?', [$from->toDateString(), $to->toDateString()])
             ->when($warehouseId, fn($q) => $q->where(fn($x) => $x->where('warehouse_id', $warehouseId)->orWhere('to_warehouse_id', $warehouseId)))
             ->get(['id', 'record_number', 'type', 'product_id', 'warehouse_id', 'quantity', 'system_quantity', 'created_at', 'posted_at', 'created_by']);
 

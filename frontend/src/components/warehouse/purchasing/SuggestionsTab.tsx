@@ -47,6 +47,20 @@ export function SuggestionsTab({ onCreated }: { onCreated: () => void }) {
 
   const selected = data.filter(s => line(s).selected)
 
+  // Seçilen satırların ihtiyaç depoları; teslim deposu bunlarla uyuşmuyorsa uyarılır
+  const ihtiyacDepolari = [...new Set(selected.map(s => s.need_warehouse_id).filter(Boolean))] as string[]
+  const teslimDeposu = warehouseId || warehouses.find(w => w.is_default)?.id || ''
+  const ihtiyacUyarisi = (() => {
+    if (ihtiyacDepolari.length === 0) return null
+    const adi = (id: string) => warehouses.find(w => w.id === id)?.name ?? 'bilinmeyen depo'
+    if (ihtiyacDepolari.length > 1) {
+      return `Seçilen ürünlerin ihtiyacı farklı depolarda (${ihtiyacDepolari.map(adi).join(', ')}). Tek teslim deposu seçilebilir; gerekirse ayrı sipariş açın.`
+    }
+    return ihtiyacDepolari[0] !== teslimDeposu
+      ? `İhtiyaç ${adi(ihtiyacDepolari[0])} deposunda; teslim deposunu buna göre seçin.`
+      : null
+  })()
+
   const createMutation = useMutation({
     mutationFn: () => post<{ message: string }>('/modules/purchasing/suggestions/orders', {
       warehouse_id: warehouseId || null,
@@ -84,7 +98,8 @@ export function SuggestionsTab({ onCreated }: { onCreated: () => void }) {
           Miktar = günlük tüketim × (tedarik süresi + gözden geçirme) + güvenlik stoğu − eldeki − yoldaki; min. sipariş / paket katına yuvarlanır.
           Sipariş sadece onayınızla <strong>taslak</strong> olarak oluşur.
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col items-end gap-1">
+         <div className="flex items-center gap-2">
           <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={inputCls} title="Teslim deposu">
             <option value="">Teslim: varsayılan depo</option>
             {warehouses.filter(w => w.is_active).map(w => <option key={w.id} value={w.id}>Teslim: {w.name}</option>)}
@@ -97,6 +112,13 @@ export function SuggestionsTab({ onCreated }: { onCreated: () => void }) {
             <ShoppingCart className="h-4 w-4" />
             {createMutation.isPending ? 'Oluşturuluyor...' : `Taslak Sipariş Oluştur (${selected.length})`}
           </button>
+         </div>
+         {/* Seçilen satırların ihtiyacı başka depodaysa kullanıcı uyarılır */}
+         {ihtiyacUyarisi && (
+           <p className="text-[11px] text-amber-600 dark:text-amber-400 max-w-sm text-right">
+             {ihtiyacUyarisi}
+           </p>
+         )}
         </div>
       </div>
 
@@ -144,6 +166,18 @@ export function SuggestionsTab({ onCreated }: { onCreated: () => void }) {
                         </td>
                         <td className="px-3 py-2.5 align-top">
                           <p className="font-medium text-zinc-900 dark:text-zinc-100">{s.name}</p>
+                          {/* İhtiyacın hangi depoda olduğu; teslim deposu yanlış seçilmesin */}
+                          {s.need_warehouse_name && (
+                            <p className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                              İhtiyaç: {s.need_warehouse_name}
+                              {s.warehouse_breakdown.length > 1 && (
+                                <span className="font-normal text-zinc-400">
+                                  {' '}· diğer depolar: {s.warehouse_breakdown.filter(b => b.warehouse_id !== s.need_warehouse_id)
+                                    .map(b => `${b.warehouse_name} ${formatQty(b.available)}`).join(', ')}
+                                </span>
+                              )}
+                            </p>
+                          )}
                           <p className="text-[11px] text-zinc-400 max-w-md">{s.reason}</p>
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums align-top">

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'BytePanel — Depo ve stok yönetimi',
+  title: 'Argus Tech — Depo ve stok yönetimi',
   description:
     'Stok hareketini hareket defterinden takip edin; kalite kontrol, son kullanma tarihi, stok riski, satın alma ve raporlama tek panelde.',
 }

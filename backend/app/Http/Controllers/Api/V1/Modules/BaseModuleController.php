@@ -41,6 +41,9 @@ abstract class BaseModuleController extends Controller
             || ($staffPerm && $user->hasPermission($staffPerm));
     }
 
+    /** Liste sorgusunda ek olarak yüklenecek ilişkiler (modüller geçersiz kılar). */
+    protected array $indexWith = [];
+
     abstract protected function getModelClass(): string;
 
     public function index(Request $request): JsonResponse
@@ -63,6 +66,14 @@ abstract class BaseModuleController extends Controller
         if ($type = $request->input('type')) {
             $query->where('type', $type);
         }
+        // Sekmeler kendi hareket tiplerini kapsar: "Tümü" seçiliyken bile o sekmeye
+        // ait olmayan kayıtlar listelenmemeli (ör. Yükleme–Boşaltma'da denetim kaydı).
+        if ($types = $request->input('types')) {
+            $liste = array_filter(array_map('trim', explode(',', (string) $types)));
+            if ($liste) {
+                $query->whereIn('type', $liste);
+            }
+        }
         if ($deptId = $request->input('department_id')) {
             $query->where('department_id', $deptId);
         }
@@ -73,7 +84,7 @@ abstract class BaseModuleController extends Controller
             $query->where('created_at', '<=', $dateTo . ' 23:59:59');
         }
 
-        $records = $query->with(['createdBy', 'department'])
+        $records = $query->with(['createdBy', 'department', ...$this->indexWith])
             ->orderBy($request->input('sort_by', 'created_at'), $request->input('sort_dir', 'desc'))
             ->paginate($request->integer('per_page', 15));
 

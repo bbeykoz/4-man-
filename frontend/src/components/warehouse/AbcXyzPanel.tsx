@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckSquare, Loader2, ShieldCheck, Square } from 'lucide-react'
+import { CheckSquare, Loader2, ShieldCheck, Square, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { get, post } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -30,8 +30,8 @@ interface AbcRow {
   class: string
   service_level: number
   safety_stock: number
-  recommended_safety: number
-  safety_gap: number
+  recommended_safety: number | null
+  safety_gap: number | null
 }
 
 interface AbcData {
@@ -74,6 +74,8 @@ export function AbcXyzPanel() {
 
   const rows = cell ? data.rows.filter(r => r.class === cell) : data.rows
   const chosen = rows.filter(r => selected[r.product_id])
+  // Önerisi olmayan (veri yetersiz) ürünler toplu uygulamaya girmez
+  const selectable = rows.filter(r => r.recommended_safety !== null)
   const policy = cell ? data.policies[cell] : null
 
   return (
@@ -165,6 +167,26 @@ export function AbcXyzPanel() {
         </div>
       </div>
 
+      {/* Hücreye tıklanınca tablo süzülüyor; süzgecin açık olduğu burada görünür */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-zinc-500">Tabloda gösterilen:</span>
+        {cell ? (
+          <button
+            onClick={() => setCell(null)}
+            className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 text-xs font-medium text-white"
+            title="Süzgeci kaldır"
+          >
+            {cell} sınıfı · {rows.length} ürün
+            <X className="h-3 w-3" />
+          </button>
+        ) : (
+          <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+            Tüm ürünler · {rows.length}
+          </span>
+        )}
+        <span className="text-[11px] text-zinc-400">Matristeki bir kutuya tıklayarak o sınıfın ürünlerini süzebilirsiniz.</span>
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <p className="text-xs text-zinc-500">
           Önerilen güvenlik stoğu = z × günlük sapma × √tedarik süresi (A %98, B %95, C %90 hizmet seviyesi). Uygulanınca risk skoru ve sipariş önerileri bunu kullanır.
@@ -183,8 +205,8 @@ export function AbcXyzPanel() {
           <thead className="bg-zinc-50 dark:bg-zinc-800/50 text-xs text-zinc-500">
             <tr>
               <th className="w-8 px-3 py-2.5">
-                <button onClick={() => setSelected(chosen.length === rows.length ? {} : Object.fromEntries(rows.map(r => [r.product_id, true])))} aria-label="Tümünü seç">
-                  {chosen.length > 0 && chosen.length === rows.length ? <CheckSquare className="h-4 w-4 text-blue-600" /> : <Square className="h-4 w-4" />}
+                <button onClick={() => setSelected(chosen.length === selectable.length ? {} : Object.fromEntries(selectable.map(r => [r.product_id, true])))} aria-label="Tümünü seç">
+                  {chosen.length > 0 && chosen.length === selectable.length ? <CheckSquare className="h-4 w-4 text-blue-600" /> : <Square className="h-4 w-4" />}
                 </button>
               </th>
               <th className="text-left px-3 py-2.5">Ürün</th>
@@ -202,7 +224,13 @@ export function AbcXyzPanel() {
             ) : rows.map(r => (
               <tr key={r.product_id} className={cn(selected[r.product_id] && 'bg-blue-50/50 dark:bg-blue-950/20')}>
                 <td className="px-3 py-2.5">
-                  <button onClick={() => setSelected(p => ({ ...p, [r.product_id]: !p[r.product_id] }))} aria-label="Seç">
+                  <button
+                    onClick={() => setSelected(p => ({ ...p, [r.product_id]: !p[r.product_id] }))}
+                    disabled={r.recommended_safety === null}
+                    title={r.recommended_safety === null ? 'Veri yetersiz; uygulanacak öneri yok' : 'Seç'}
+                    aria-label="Seç"
+                    className="disabled:opacity-30"
+                  >
                     {selected[r.product_id] ? <CheckSquare className="h-4 w-4 text-blue-600" /> : <Square className="h-4 w-4 text-zinc-400" />}
                   </button>
                 </td>
@@ -216,7 +244,15 @@ export function AbcXyzPanel() {
                 <td className="px-3 py-2.5 text-right">{formatQty(r.weekly_mean)} {r.unit}</td>
                 <td className="px-3 py-2.5 text-right">{r.cv == null ? '—' : formatQty(r.cv)}</td>
                 <td className="px-3 py-2.5 text-right">
-                  {formatQty(r.safety_stock)} → <strong className={cn(Math.abs(r.safety_gap) >= 1 && (r.safety_gap > 0 ? 'text-orange-600' : 'text-green-600'))}>{formatQty(r.recommended_safety)}</strong>
+                  {r.recommended_safety === null ? (
+                    <span className="text-xs text-zinc-400" title="Geçmiş veri yetersiz, güvenlik stoğu hesaplanamıyor">
+                      {formatQty(r.safety_stock)} → veri yetersiz
+                    </span>
+                  ) : (
+                    <>
+                      {formatQty(r.safety_stock)} → <strong className={cn(r.safety_gap !== null && Math.abs(r.safety_gap) >= 1 && (r.safety_gap > 0 ? 'text-orange-600' : 'text-green-600'))}>{formatQty(r.recommended_safety)}</strong>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}

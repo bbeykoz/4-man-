@@ -49,7 +49,8 @@ class StockLedgerService
             match ($record->type) {
                 'stock_in', 'return_in' => $this->insert($base, [
                     'movement_type' => $record->type,
-                    'bucket'        => $record->qc_status === WarehouseRecord::QC_PENDING
+                    // Bekleyen ve reddedilen girişler karantinaya düşer; yalnız onaylı stok kullanılabilir
+                    'bucket'        => in_array($record->qc_status, WarehouseRecord::QC_BLOCKING, true)
                         ? StockMovement::BUCKET_QUARANTINE
                         : StockMovement::BUCKET_AVAILABLE,
                     'quantity'      => $qty,
@@ -145,6 +146,87 @@ class StockLedgerService
 
                 $this->insert($base, [...$lot, 'movement_type' => 'qc_release', 'bucket' => StockMovement::BUCKET_QUARANTINE, 'quantity' => -$qty]);
                 $this->insert($base, [...$lot, 'movement_type' => 'qc_release', 'bucket' => StockMovement::BUCKET_AVAILABLE, 'quantity' => $qty]);
+            }
+
+            $this->syncProductStock($product);
+        });
+    }
+
+    // ─── Booked (rezerve) ───────────────────────────────────────────
+
+    /**
+     * Sipariş için stok ayırır: available → reserved.
+     *
+     * Serbest stok yetmezse hata vermez, bulabildiği kadarını ayırır ve
+     * fiilen ayrılan miktarı döndürür. Eksik kalan kısım sipariş kaydında görünür.
+     */
+    public function reserve(WarehouseRecord $record, User $user, float $qty): float
+    {
+        if ($qty <= self::EPSILON || !$record->product_id) {
+            return 0.0;
+        }
+
+        return (float) DB::transaction(function () use ($record, $user, $qty) {
+            $product   = $this->lockProduct($record);
+            $warehouse = $this->resolveWarehouse($record);
+            $base      = $this->baseRow($record, $user, $warehouse->id);
+            $moved     = 0.0;
+
+            foreach ($this->allocateUpTo($product, $warehouse, StockMovement::BUCKET_AVAILABLE, $qty, $record->batch_number) as $slice) {
+                $lot = ['lot_number' => $slice['lot_number'], 'expiry_date' => $slice['expiry_date']];
+                $this->insert($base, [...$lot, 'movement_type' => 'reserve', 'bucket' => StockMovement::BUCKET_AVAILABLE, 'quantity' => -$slice['qty']]);
+                $this->insert($base, [...$lot, 'movement_type' => 'reserve', 'bucket' => StockMovement::BUCKET_RESERVED, 'quantity' => $slice['qty']]);
+                $moved += $slice['qty'];
+            }
+
+            $this->syncProductStock($product);
+
+            return round($moved, 3);
+        });
+    }
+
+    /** Rezerveyi serbest bırakır: reserved → available. İptal ve eksiltmede kullanılır. */
+    public function releaseReservation(WarehouseRecord $record, User $user, float $qty): void
+    {
+        if ($qty <= self::EPSILON) {
+            return;
+        }
+
+        DB::transaction(function () use ($record, $user, $qty) {
+            $product   = $this->lockProduct($record);
+            $warehouse = $this->resolveWarehouse($record);
+            $base      = $this->baseRow($record, $user, $warehouse->id);
+
+            foreach ($this->allocateUpTo($product, $warehouse, StockMovement::BUCKET_RESERVED, $qty, $record->batch_number) as $slice) {
+                $lot = ['lot_number' => $slice['lot_number'], 'expiry_date' => $slice['expiry_date']];
+                $this->insert($base, [...$lot, 'movement_type' => 'reserve_release', 'bucket' => StockMovement::BUCKET_RESERVED,  'quantity' => -$slice['qty']]);
+                $this->insert($base, [...$lot, 'movement_type' => 'reserve_release', 'bucket' => StockMovement::BUCKET_AVAILABLE, 'quantity' => $slice['qty']]);
+            }
+
+            $this->syncProductStock($product);
+        });
+    }
+
+    /** Teslimat: rezerve edilen stok depodan çıkar. Yetersizse hata verir. */
+    public function deliverReserved(WarehouseRecord $record, User $user, float $qty): void
+    {
+        if ($qty <= self::EPSILON) {
+            throw new StockException('Teslim miktarı sıfırdan büyük olmalıdır.');
+        }
+
+        DB::transaction(function () use ($record, $user, $qty) {
+            $product   = $this->lockProduct($record);
+            $warehouse = $this->resolveWarehouse($record);
+            $base      = $this->baseRow($record, $user, $warehouse->id);
+
+            foreach ($this->allocate($product, $warehouse, StockMovement::BUCKET_RESERVED, $qty, $record->batch_number) as $slice) {
+                $this->insert($base, [
+                    'movement_type' => 'stock_out',
+                    'bucket'        => StockMovement::BUCKET_RESERVED,
+                    'quantity'      => -$slice['qty'],
+                    'lot_number'    => $slice['lot_number'],
+                    'expiry_date'   => $slice['expiry_date'],
+                ]);
             }
 
             $this->syncProductStock($product);
@@ -326,12 +408,24 @@ class StockLedgerService
             $unit      = $product->unit ?: 'adet';
             $scope     = $lot ? "{$lot} lotunda" : '';
             throw new StockException(
-                "Yetersiz stok: {$warehouse->name} deposunda {$scope} {$this->bucketLabel($bucket)} {$this->fmt($available)} {$unit} var, " .
+                // Depo adı zaten "… Deposu" olabiliyor; "Varna Deposu deposunda" tekrarını önler
+                "Yetersiz stok ({$warehouse->name}): {$scope} {$this->bucketLabel($bucket)} {$this->fmt($available)} {$unit} var, " .
                 "istenen {$this->fmt($qty)} {$unit}."
             );
         }
 
         return $slices;
+    }
+
+    /** allocate()'in hata vermeyen sürümü: bulabildiği kadarını döndürür. */
+    private function allocateUpTo(WarehouseProduct $product, Warehouse $warehouse, string $bucket, float $qty, ?string $lot): array
+    {
+        $available = $this->balance($product->company_id, $product->id, $warehouse->id, $bucket, $lot);
+        $take      = min($qty, $available);
+
+        return $take > self::EPSILON
+            ? $this->allocate($product, $warehouse, $bucket, round($take, 3), $lot)
+            : [];
     }
 
     private function lockProduct(WarehouseRecord $record): WarehouseProduct

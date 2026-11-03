@@ -3,6 +3,7 @@
 // Düzen: watermelon "auth 11" bloğu. Form mantığı projenin kendi girişi (react-hook-form + zod + 2FA).
 // Google/Apple düğmeleri duruyor ama pasif: backend'de OAuth sağlayıcı bağlı değil.
 import { useState } from 'react'
+import { BrandMark } from '@/components/common/BrandMark'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -147,10 +148,8 @@ export default function LoginPage() {
         >
           <motion.div variants={itemVariants} className="mb-10 text-center">
             <a href="/market" className="mb-8 inline-flex items-center gap-2">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-blue-600 to-violet-600 text-sm font-bold text-white">
-                BP
-              </span>
-              <span className="font-bold text-white">BytePanel</span>
+              <BrandMark className="h-9 w-9" priority />
+              <span className="font-bold text-white">Argus Tech</span>
             </a>
             <h2 className="text-3xl leading-tight font-medium tracking-tight text-balance text-white md:text-[40px]">
               Depo panelinize

@@ -31,6 +31,22 @@ interface TransferSuggestion {
   reason: string
 }
 
+/** Küsurat kabul etmeyen birimler; arka uçtaki listeyle aynı. */
+const SAYILABILIR_BIRIMLER = ['adet', 'ad', 'piece', 'pcs', 'koli', 'kutu', 'paket', 'palet', 'çuval', 'rulo', 'top', 'düzine']
+
+function isCountedUnit(unit?: string | null): boolean {
+  return !!unit && SAYILABILIR_BIRIMLER.includes(unit.trim().toLowerCase())
+}
+
+/** Girilen miktarla ilgili sorun varsa metnini döndürür, yoksa null. */
+function qtyError(s: TransferSuggestion, raw?: string): string | null {
+  const v = parseFloat(raw ?? String(s.quantity))
+  if (!Number.isFinite(v) || v <= 0) return 'Miktar 0\'dan büyük olmalı'
+  if (isCountedUnit(s.unit) && Math.abs(v - Math.round(v)) > 0.0001) return `"${s.unit}" biriminde küsurat olmaz`
+  if (v - s.source_stock > 0.0005) return `Kaynakta ${formatQty(s.source_stock)} ${s.unit ?? ''} var`
+  return null
+}
+
 interface TransferData {
   suggestions: TransferSuggestion[]
   summary: { count: number; total_qty: number; total_value: number; replaces_purchase: number; products: number }
@@ -52,6 +68,8 @@ export function TransferPanel() {
 
   const rows = data?.suggestions ?? []
   const chosen = rows.filter(s => selected[keyOf(s)])
+  // Hatalı miktar girilen satır varsa emir oluşturulmaz
+  const hatali = chosen.filter(s => qtyError(s, qty[keyOf(s)]))
 
   const createMutation = useMutation({
     mutationFn: () => post<{ message: string }>('/modules/stock/transfers/orders', {
@@ -107,12 +125,19 @@ export function TransferPanel() {
           Her depo için hedef stok = depo tüketimi × (tedarik + gözden geçirme süresi) + güvenlik stoğu payı.
           Açığı olan depo, kendi hedefinin üstünde stoğu olan depodan karşılanır. Onay bekleyen transferler hesaba katılır.
         </p>
-        <AsyncActionButton
-          label={`Transfer emri oluştur (${chosen.length})`}
-          width={230}
-          disabled={chosen.length === 0}
-          onAction={() => createMutation.mutateAsync()}
-        />
+        <div className="flex flex-col items-end gap-1">
+          <AsyncActionButton
+            label={`Transfer emri oluştur (${chosen.length})`}
+            width={230}
+            disabled={chosen.length === 0 || hatali.length > 0}
+            onAction={() => createMutation.mutateAsync()}
+          />
+          {hatali.length > 0 && (
+            <span className="text-[11px] text-red-500">
+              {hatali.length} satırda miktar hatalı
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
@@ -163,15 +188,26 @@ export function TransferPanel() {
                   <td className="px-3 py-2.5 text-right tabular-nums align-top">{formatQty(Math.round(s.dest_need))}</td>
                   <td className="px-3 py-2.5 align-top">
                     <div className="flex items-center gap-1">
+                      {/* Sayılabilir birimde küsurat yok; kaynak stoktan fazlası girilemez */}
                       <input
-                        type="number" min="0" step="any"
+                        type="number"
+                        min={isCountedUnit(s.unit) ? 1 : 0}
+                        max={s.source_stock}
+                        step={isCountedUnit(s.unit) ? 1 : 'any'}
                         value={qty[k] ?? String(s.quantity)}
                         onChange={e => { setQty(p => ({ ...p, [k]: e.target.value })); setSelected(p => ({ ...p, [k]: true })) }}
-                        className="w-24 px-2 py-1.5 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+                        className={cn(
+                          'w-24 px-2 py-1.5 text-sm rounded-lg border bg-white dark:bg-zinc-900',
+                          qtyError(s, qty[k])
+                            ? 'border-red-400 dark:border-red-700'
+                            : 'border-zinc-200 dark:border-zinc-700',
+                        )}
                       />
                       <span className="text-xs text-zinc-400">{s.unit}</span>
                     </div>
-                    {s.value != null && <span className="text-[11px] text-zinc-400">{formatMoney(s.value)}</span>}
+                    {qtyError(s, qty[k])
+                      ? <span className="block text-[11px] text-red-500">{qtyError(s, qty[k])}</span>
+                      : s.value != null && <span className="text-[11px] text-zinc-400">{formatMoney(s.value)}</span>}
                   </td>
                   <td className="px-3 py-2.5 align-top text-xs text-zinc-600 dark:text-zinc-300 max-w-xs">{s.reason}</td>
                 </tr>
@@ -180,7 +216,7 @@ export function TransferPanel() {
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-zinc-400">Emir &quot;Bekliyor&quot; transfer kaydı olarak açılır; Depolama listesinden onaylayınca stok FEFO sırasıyla (SKT&apos;si yakın lot önce) taşınır.</p>
+      <p className="text-[11px] text-zinc-400">Emir &quot;Bekliyor&quot; transfer kaydı olarak açılır; Depolama listesinden onaylayınca stok FIFO sırasıyla (SKT&apos;si yakın lot önce) taşınır.</p>
     </div>
   )
 }

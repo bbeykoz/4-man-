@@ -2,6 +2,8 @@
 
 namespace App\Services\Stock;
 
+use App\Support\AppTime;
+
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\StockMovement;
@@ -26,7 +28,7 @@ class StockMetricsService
     {
         $longWindow  = (int) config('stock.consumption_long_window', 90);
         $shortWindow = (int) config('stock.consumption_short_window', 30);
-        $today       = Carbon::today();
+        $today       = AppTime::today();
         $since       = $today->copy()->subDays($longWindow - 1);
 
         $scope = fn($q) => $q
@@ -112,7 +114,8 @@ class StockMetricsService
             $long  = $this->windowStats($series, $today, $longWindow, $ageDays);
 
             // Yeterli geçmiş varsa kısa ve uzun pencere harmanlanır
-            $avg = $ageDays >= 60 ? 0.6 * $short['avg'] + 0.4 * $long['avg'] : $short['avg'];
+            $blended = $ageDays >= 60;
+            $avg     = $blended ? 0.6 * $short['avg'] + 0.4 * $long['avg'] : $short['avg'];
 
             return [$id => [
                 'available'          => round((float) ($available[$id] ?? 0), 3),
@@ -123,6 +126,13 @@ class StockMetricsService
                     ? max(0, (int) $today->diffInDays(Carbon::parse($nextExp), false))
                     : null,
                 'daily_consumption'  => round($avg, 3),
+                // Hesaplarda yuvarlanmamış değer kullanılır; 3 haneye yuvarlanmış değerle
+                // çarpım yapılınca sipariş önerisi 1 birim şişiyordu.
+                'daily_consumption_exact' => $avg,
+                // Açıklama metni gerçekte kullanılan pencereyi yazabilsin diye:
+                // yeni üründe bölen en az min_consumption_days olur, 30 değil.
+                'consumption_days'   => $short['days'],
+                'consumption_blended'=> $blended,
                 'daily_std'          => round($short['std'], 3),
                 'consumed_short'     => round($short['sum'], 3),
                 'consumed_mid'       => round($mid['sum'], 3),
@@ -154,6 +164,6 @@ class StockMetricsService
         $avg  = $sum / $days;
         $var  = array_sum(array_map(fn($v) => ($v - $avg) ** 2, $values)) / $days;
 
-        return ['sum' => $sum, 'avg' => $avg, 'std' => sqrt($var)];
+        return ['sum' => $sum, 'avg' => $avg, 'std' => sqrt($var), 'days' => $days];
     }
 }

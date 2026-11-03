@@ -65,7 +65,12 @@ class WhatIfService
     private function summarize(Collection $rows, Collection $baseline): array
     {
         $shortfall = $rows->map(fn($r) => $this->shortfall($r));
-        $affected  = $rows->filter(fn($r, $id) => $this->isWorse($r, $baseline[$id]))->count();
+
+        // "Etkilenen" = sonucu değişen ürün. Eskiden yalnız kötüleşenler sayılıyordu,
+        // bu yüzden iyileştirme senaryolarında (tedarik süresi kısalması gibi) rakam
+        // 0 görünürken tablodaki değerler değişiyordu. Kötüleşen sayısı ayrıca verilir.
+        $changed  = $rows->filter(fn($r, $id) => $this->isDifferent($r, $baseline[$id]))->count();
+        $worsened = $rows->filter(fn($r, $id) => $this->isWorse($r, $baseline[$id]))->count();
 
         $orderQty   = $rows->sum('suggested_order_qty');
         $orderValue = $rows->sum(fn($r) => $r['suggested_order_qty'] * ($r['unit_price'] ?? 0));
@@ -73,7 +78,8 @@ class WhatIfService
         $baseValue  = $baseline->sum(fn($r) => $r['suggested_order_qty'] * ($r['unit_price'] ?? 0));
 
         return [
-            'affected_products'    => $affected,
+            'affected_products'    => $changed,
+            'worsened_products'    => $worsened,
             'shortfall_products'   => $shortfall->filter(fn($q) => $q > 0)->count(),
             'shortfall_qty'        => round($shortfall->sum(), 1),
             'shortfall_value'      => round($rows->sum(fn($r) => $this->shortfall($r) * ($r['unit_price'] ?? 0)), 2),
@@ -125,6 +131,17 @@ class WhatIfService
     private function shortfall(array $r): float
     {
         return max(0, $r['daily_consumption'] * $r['lead_time_days'] - ($r['available'] + $r['on_order']));
+    }
+
+    /** Senaryo bu ürün için herhangi bir sonucu değiştirdi mi (iyiye ya da kötüye). */
+    private function isDifferent(array $after, array $before): bool
+    {
+        return $after['risk_score'] !== $before['risk_score']
+            || $after['risk_level'] !== $before['risk_level']
+            || abs($after['suggested_order_qty'] - $before['suggested_order_qty']) > 0.0005
+            || abs($this->shortfall($after) - $this->shortfall($before)) > 0.0005
+            || $after['lead_time_days'] !== $before['lead_time_days']
+            || abs($after['daily_consumption'] - $before['daily_consumption']) > 0.0005;
     }
 
     private function isWorse(array $after, array $before): bool

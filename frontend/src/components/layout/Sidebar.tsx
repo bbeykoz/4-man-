@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useState } from 'react'
+import { BrandWordmark } from '@/components/common/BrandMark'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import {
@@ -296,12 +297,10 @@ export function Sidebar() {
     >
       {/* Logo */}
       <div className={cn('flex items-center h-16 px-4 border-b border-zinc-200 dark:border-zinc-800', sidebarCollapsed && 'justify-center')}>
+        {/* Yazı, düğmeden arta kalan alana ortalanır: iki yanındaki boşluk eşit olur */}
         {!sidebarCollapsed && (
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-violet-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-xs font-bold">BP</span>
-            </div>
-            <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">BytePanel</span>
+          <div className="flex min-w-0 flex-1 justify-center">
+            <BrandWordmark className="h-9 max-w-[150px] object-contain" priority />
           </div>
         )}
         <button
@@ -370,11 +369,9 @@ export function Sidebar() {
       >
         {/* Mobile header */}
         <div className="flex items-center h-16 px-4 border-b border-zinc-200 dark:border-zinc-800">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-violet-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-xs font-bold">BP</span>
-            </div>
-            <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">BytePanel</span>
+          {/* Yazı, kapatma düğmesinden arta kalan alana ortalanır */}
+          <div className="flex min-w-0 flex-1 justify-center">
+            <BrandWordmark className="h-9 max-w-[150px] object-contain" priority />
           </div>
           <button
             onClick={() => setMobileSidebarOpen(false)}

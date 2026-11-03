@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { StepPanel, StepDots } from '@/components/common/StepPanel'
 import { SignaturePad } from './SignaturePad'
-import { Camera, CheckCircle2, Clock, ImagePlus, Loader2, ShieldCheck, X } from 'lucide-react'
+import { Camera, CheckCircle2, Clock, ImagePlus, Loader2, ShieldCheck, X, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, post } from '@/lib/api'
 import { cn, formatDateTime } from '@/lib/utils'
@@ -103,19 +103,39 @@ function PhotoPicker({ photo, onChange }: { photo: File | null; onChange: (file:
 
 // ─── Kayıt oluşturma ─────────────────────────────────────────────────────────
 
+/**
+ * Kalite kontrol sonucu.
+ * passed   → onaylandı, görsel isteğe bağlı
+ * rejected → ürün reddedildi, görsel zorunlu
+ * pending  → kontrol sonra yapılacak
+ */
+export type QcResult = 'passed' | 'rejected' | 'pending'
+
+export interface QcAnswer {
+  result: QcResult
+  photo: File | null
+  note: string
+}
+
+export const QC_LABELS: Record<QcResult, string> = {
+  passed:   'QC Onaylı',
+  rejected: 'QC Reddedildi',
+  pending:  'QC Bekliyor',
+}
+
 /** Depo kaydını kalite kontrol cevabıyla tek istekte oluşturur. */
 export function createRecordWithQualityCheck(
   modulePath: WarehouseModulePath,
   payload: Record<string, unknown>,
-  qcDone: boolean,
-  photo: File | null,
+  answer: QcAnswer,
 ) {
   const form = new FormData()
   for (const [key, value] of Object.entries(payload)) {
     if (value !== undefined && value !== null && value !== '') form.append(key, String(value))
   }
-  form.append('qc_done', qcDone ? '1' : '0')
-  if (qcDone && photo) form.append('qc_photo', photo)
+  form.append('qc_result', answer.result)
+  if (answer.photo) form.append('qc_photo', answer.photo)
+  if (answer.result === 'rejected' && answer.note.trim()) form.append('qc_note', answer.note.trim())
 
   return post(modulePath, form, MULTIPART)
 }
@@ -125,23 +145,37 @@ export function createRecordWithQualityCheck(
 interface QualityCheckPromptProps {
   submitting: boolean
   onBack: () => void
-  onSubmit: (qcDone: boolean, photo: File | null) => void
+  onSubmit: (answer: QcAnswer) => void
 }
 
+/**
+ * Kaydet'e basınca çıkan kalite kontrol adımı.
+ * Onayda görsel istenmez; yalnız redde kanıt görseli zorunludur.
+ */
 export function QualityCheckPrompt({ submitting, onBack, onSubmit }: QualityCheckPromptProps) {
-  const [answer, setAnswer] = useState<'yes' | 'no' | null>(null)
-  const [photo, setPhoto] = useState<File | null>(null)
+  const [result, setResult] = useState<QcResult | null>(null)
+  const [photo, setPhoto]   = useState<File | null>(null)
+  const [note, setNote]     = useState('')
 
-  const canSubmit = answer === 'no' || (answer === 'yes' && !!photo)
+  // Tek zorunluluk: red edilen üründe görsel
+  const canSubmit = result !== null && (result !== 'rejected' || !!photo)
 
-  const choiceCls = (active: boolean, tone: 'green' | 'amber') => cn(
-    'flex-1 flex flex-col items-center gap-1.5 px-3 py-4 rounded-xl border-2 text-sm font-semibold transition-colors',
+  const choiceCls = (active: boolean, tone: 'green' | 'red' | 'amber') => cn(
+    'flex-1 flex flex-col items-center gap-1.5 px-2 py-4 rounded-xl border-2 text-sm font-semibold transition-colors',
     active
-      ? tone === 'green'
-        ? 'border-green-600 bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-400'
-        : 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+      ? {
+          green: 'border-green-600 bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-400',
+          red:   'border-red-600 bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400',
+          amber: 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400',
+        }[tone]
       : 'border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600'
   )
+
+  const submitLabel = result === 'rejected'
+    ? 'Reddet ve Kaydet'
+    : result === 'pending'
+      ? 'QC Bekliyor Olarak Kaydet'
+      : 'Onayla ve Kaydet'
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -157,39 +191,69 @@ export function QualityCheckPrompt({ submitting, onBack, onSubmit }: QualityChec
           </div>
           <div className="flex-1">
             <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Kalite Kontrol</h2>
-            <p className="text-xs text-zinc-500">Kaydı eklemeden önce kalite kontrol durumunu belirtin.</p>
+            <p className="text-xs text-zinc-500">Kaydı eklemeden önce kalite kontrol sonucunu seçin.</p>
           </div>
           {/* İki adımlı akış: form → kalite kontrol */}
           <StepDots total={2} current={1} />
         </div>
 
-        <StepPanel step={answer ?? 'none'} className="p-5">
+        <StepPanel step={result ?? 'none'} className="p-5">
           <div className="space-y-4">
-          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Kalite kontrol yapıldı mı?</p>
-          <div className="flex gap-3">
-            <button type="button" className={choiceCls(answer === 'yes', 'green')} onClick={() => setAnswer('yes')}>
-              <CheckCircle2 className="h-6 w-6" /> Evet
-            </button>
-            <button type="button" className={choiceCls(answer === 'no', 'amber')} onClick={() => setAnswer('no')}>
-              <Clock className="h-6 w-6" /> Hayır
-            </button>
-          </div>
-
-          {answer === 'yes' && (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                Kalite kontrol görseli <span className="text-red-500">*</span>
-              </p>
-              <PhotoPicker photo={photo} onChange={setPhoto} />
+            <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Kalite kontrol sonucu</p>
+            <div className="flex gap-2">
+              <button type="button" className={choiceCls(result === 'passed', 'green')} onClick={() => setResult('passed')}>
+                <CheckCircle2 className="h-6 w-6" /> Onayla
+              </button>
+              <button type="button" className={choiceCls(result === 'rejected', 'red')} onClick={() => setResult('rejected')}>
+                <XCircle className="h-6 w-6" /> Reddet
+              </button>
+              <button type="button" className={choiceCls(result === 'pending', 'amber')} onClick={() => setResult('pending')}>
+                <Clock className="h-6 w-6" /> Sonra
+              </button>
             </div>
-          )}
 
-          {answer === 'no' && (
-            <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2.5">
-              Kayıt <strong>&quot;Kalite kontrol bekliyor&quot;</strong> olarak eklenecek. Kontrol yapıldığında listedeki
-              rozete tıklayarak görsel yükleyip onaylayabilirsiniz.
-            </p>
-          )}
+            {result === 'passed' && (
+              <p className="text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 rounded-lg px-3 py-2.5">
+                Kayıt <strong>onaylı</strong> eklenecek, stok kullanılabilir hâle gelecek. Görsel zorunlu değil;
+                isterseniz ekleyebilirsiniz.
+              </p>
+            )}
+
+            {result === 'rejected' && (
+              <div className="space-y-3">
+                <p className="text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2.5">
+                  Ürün reddedilecek ve stok <strong>karantinada</strong> kalacak. Kanıt görseli zorunludur.
+                </p>
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                    Red görseli <span className="text-red-500">*</span>
+                  </p>
+                  <PhotoPicker photo={photo} onChange={setPhoto} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
+                    Red gerekçesi <span className="text-zinc-400">(isteğe bağlı)</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={note}
+                    onChange={e => setNote(e.target.value)}
+                    maxLength={500}
+                    placeholder="Örn: Ambalaj yırtık, 12 koli ıslanmış"
+                    className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm resize-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {result === 'passed' && <PhotoPicker photo={photo} onChange={setPhoto} />}
+
+            {result === 'pending' && (
+              <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2.5">
+                Kayıt <strong>&quot;Kalite kontrol bekliyor&quot;</strong> olarak eklenecek ve stok karantinada tutulacak.
+                Kontrol yapıldığında listedeki rozete tıklayarak sonuçlandırabilirsiniz.
+              </p>
+            )}
           </div>
         </StepPanel>
 
@@ -204,11 +268,14 @@ export function QualityCheckPrompt({ submitting, onBack, onSubmit }: QualityChec
           </button>
           <button
             type="button"
-            onClick={() => answer && onSubmit(answer === 'yes', photo)}
+            onClick={() => result && onSubmit({ result, photo, note })}
             disabled={!canSubmit || submitting}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-60"
+            className={cn(
+              'px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors disabled:opacity-60',
+              result === 'rejected' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700',
+            )}
           >
-            {submitting ? 'Kaydediliyor...' : answer === 'no' ? 'QC Bekliyor Olarak Kaydet' : 'Onayla ve Kaydet'}
+            {submitting ? 'Kaydediliyor...' : submitLabel}
           </button>
         </div>
       </motion.div>
@@ -221,21 +288,27 @@ export function QualityCheckPrompt({ submitting, onBack, onSubmit }: QualityChec
 export function QcBadge({ record, onClick }: { record: WarehouseRecord; onClick: () => void }) {
   if (!record.qc_status) return <span className="text-xs text-zinc-400">—</span>
 
-  const passed = record.qc_status === 'passed'
+  const status = record.qc_status
+  const style = {
+    passed:   { cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', Icon: CheckCircle2, title: 'Kalite kontrol detayını gör' },
+    rejected: { cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',         Icon: XCircle,     title: 'Red gerekçesini ve görseli gör' },
+    pending:  { cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', Icon: Clock,       title: 'Kalite kontrolü sonuçlandır' },
+  }[status]
+
+  const { cls, Icon, title } = style
+
   return (
     <button
       type="button"
       onClick={onClick}
-      title={passed ? 'Kalite kontrol görselini gör' : 'Görsel yükleyip onayla'}
+      title={title}
       className={cn(
         'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap transition-opacity hover:opacity-80',
-        passed
-          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+        cls,
       )}
     >
-      {passed ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-      {passed ? 'QC Onaylı' : 'QC Bekliyor'}
+      <Icon className="h-3 w-3" />
+      {QC_LABELS[status]}
     </button>
   )
 }
@@ -250,15 +323,20 @@ interface QcDetailModalProps {
 }
 
 export function QcDetailModal({ record, modulePath, onClose, onApproved }: QcDetailModalProps) {
-  const passed = record.qc_status === 'passed'
+  const status   = record.qc_status
+  const pending  = status === 'pending'
+  const rejected = status === 'rejected'
+  const decided  = !pending
+
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
-  const [loadingPhoto, setLoadingPhoto] = useState(passed && !!record.qc_has_photo)
+  const [loadingPhoto, setLoadingPhoto] = useState(decided && !!record.qc_has_photo)
   const [photo, setPhoto] = useState<File | null>(null)
-  const [saving, setSaving] = useState(false)
+  const [note, setNote]   = useState('')
+  const [saving, setSaving] = useState<QcResult | null>(null)
 
   // Görsel yetkili endpoint'ten blob olarak alınır (dosyalar herkese açık değil)
   useEffect(() => {
-    if (!passed || !record.qc_has_photo) return
+    if (!decided || !record.qc_has_photo) return
     let url: string | null = null
     let cancelled = false
 
@@ -275,22 +353,30 @@ export function QcDetailModal({ record, modulePath, onClose, onApproved }: QcDet
       cancelled = true
       if (url) URL.revokeObjectURL(url)
     }
-  }, [passed, record.id, record.qc_has_photo, modulePath])
+  }, [decided, record.id, record.qc_has_photo, modulePath])
 
-  const approve = async () => {
-    if (!photo) return
-    setSaving(true)
+  /** Onayda görsel isteğe bağlı, redde zorunlu. */
+  const decide = async (result: QcResult) => {
+    if (result === 'rejected' && !photo) {
+      toast.error('Ürün reddedildiğinde görsel zorunludur.')
+      return
+    }
+
+    setSaving(result)
     try {
       const form = new FormData()
-      form.append('qc_photo', photo)
+      form.append('result', result)
+      if (photo) form.append('qc_photo', photo)
+      if (result === 'rejected' && note.trim()) form.append('qc_note', note.trim())
+
       await post(`${modulePath}/${record.id}/quality-check`, form, MULTIPART)
-      toast.success('Kalite kontrol onaylandı.')
+      toast.success(result === 'rejected' ? 'Ürün reddedildi. Stok karantinada kalır.' : 'Kalite kontrol onaylandı.')
       onApproved()
       onClose()
     } catch (e) {
-      toast.error((e as { message?: string })?.message ?? 'Onaylanamadı.')
+      toast.error((e as { message?: string })?.message ?? 'Kaydedilemedi.')
     } finally {
-      setSaving(false)
+      setSaving(null)
     }
   }
 
@@ -308,33 +394,72 @@ export function QcDetailModal({ record, modulePath, onClose, onApproved }: QcDet
         </div>
 
         <div className="p-5 space-y-4">
-          {passed ? (
+          {decided ? (
             <>
-              <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <div className={cn('flex items-center gap-2 text-sm', rejected
+                ? 'text-red-700 dark:text-red-400'
+                : 'text-green-700 dark:text-green-400')}>
+                {rejected ? <XCircle className="h-4 w-4 shrink-0" /> : <CheckCircle2 className="h-4 w-4 shrink-0" />}
                 <span>
-                  Onaylandı
+                  {rejected ? 'Reddedildi' : 'Onaylandı'}
                   {record.qc_checked_by_name && <> · <strong>{record.qc_checked_by_name}</strong></>}
                   {record.qc_checked_at && <> · {formatDateTime(record.qc_checked_at)}</>}
                 </span>
               </div>
-              <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 min-h-40 flex items-center justify-center">
-                {loadingPhoto ? (
-                  <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
-                ) : photoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- yetkili blob URL
-                  <img src={photoUrl} alt="Kalite kontrol görseli" className="w-full max-h-[60vh] object-contain" />
-                ) : (
-                  <p className="text-xs text-zinc-400 py-10">Görsel bulunamadı.</p>
-                )}
-              </div>
+
+              {rejected && (
+                <p className="text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2.5">
+                  Stok karantinada tutuluyor, kullanılabilir stoğa geçmedi.
+                </p>
+              )}
+
+              {record.qc_note && (
+                <div className="rounded-lg bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 px-3 py-2.5">
+                  <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-0.5">Gerekçe</p>
+                  <p className="text-sm text-zinc-700 dark:text-zinc-300">{record.qc_note}</p>
+                </div>
+              )}
+
+              {record.qc_has_photo ? (
+                <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 min-h-40 flex items-center justify-center">
+                  {loadingPhoto ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+                  ) : photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- yetkili blob URL
+                    <img src={photoUrl} alt="Kalite kontrol görseli" className="w-full max-h-[60vh] object-contain" />
+                  ) : (
+                    <p className="text-xs text-zinc-400 py-10">Görsel bulunamadı.</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-400">Bu kayıt için görsel eklenmemiş.</p>
+              )}
             </>
           ) : (
             <>
               <p className="text-sm text-amber-700 dark:text-amber-400">
-                Bu kayıt kalite kontrol bekliyor. Görsel yükleyerek onaylayın.
+                Bu kayıt kalite kontrol bekliyor. Onaylarsanız stok kullanılabilir hâle gelir;
+                reddederseniz karantinada kalır.
               </p>
-              <PhotoPicker photo={photo} onChange={setPhoto} />
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                  Görsel <span className="text-zinc-400">(yalnız redde zorunlu)</span>
+                </p>
+                <PhotoPicker photo={photo} onChange={setPhoto} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
+                  Red gerekçesi <span className="text-zinc-400">(isteğe bağlı)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
+                  maxLength={500}
+                  placeholder="Örn: Ambalaj yırtık, 12 koli ıslanmış"
+                  className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm resize-none"
+                />
+              </div>
             </>
           )}
 
@@ -358,14 +483,23 @@ export function QcDetailModal({ record, modulePath, onClose, onApproved }: QcDet
           >
             Kapat
           </button>
-          {!passed && (
-            <button
-              onClick={approve}
-              disabled={!photo || saving}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors disabled:opacity-60"
-            >
-              {saving ? 'Onaylanıyor...' : 'Onayla'}
-            </button>
+          {pending && (
+            <>
+              <button
+                onClick={() => decide('rejected')}
+                disabled={saving !== null}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-60"
+              >
+                {saving === 'rejected' ? 'Kaydediliyor...' : 'Reddet'}
+              </button>
+              <button
+                onClick={() => decide('passed')}
+                disabled={saving !== null}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors disabled:opacity-60"
+              >
+                {saving === 'passed' ? 'Onaylanıyor...' : 'Onayla'}
+              </button>
+            </>
           )}
         </div>
       </div>
