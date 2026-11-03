@@ -445,7 +445,7 @@ function ImportModal({ onClose }: ImportModalProps) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [periodType, setPeriodType] = useState('monthly')
-  const [result, setResult] = useState<{ imported: number; errors: string[] } | null>(null)
+  const [result, setResult] = useState<{ imported: number; createdProducts: number; errors: string[] } | null>(null)
   const [dragging, setDragging] = useState(false)
 
   const importMutation = useMutation({
@@ -457,10 +457,14 @@ function ImportModal({ onClose }: ImportModalProps) {
       return api.post<any>('/modules/warehouse/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
     },
     onSuccess: (res: any) => {
-      setResult({ imported: res.imported, errors: res.errors ?? [] })
+      setResult({ imported: res.imported, createdProducts: res.created_products ?? 0, errors: res.errors ?? [] })
       qc.invalidateQueries({ queryKey: ['warehouse-records'] })
       qc.invalidateQueries({ queryKey: ['warehouse-stats'] })
-      if (res.imported > 0) toast.success(`${res.imported} kayıt içe aktarıldı.`)
+      qc.invalidateQueries({ queryKey: ['warehouse-products-catalog'] })
+      qc.invalidateQueries({ queryKey: ['warehouse-products-search'] })
+      qc.invalidateQueries({ queryKey: ['stock-balances'] })
+      qc.invalidateQueries({ queryKey: ['stock-warehouses'] })
+      if (res.imported > 0) toast.success(res.message ?? `${res.imported} kayıt içe aktarıldı.`)
     },
     onError: (e: any) => toast.error(e?.message ?? 'İçe aktarma başarısız.'),
   })
@@ -493,7 +497,10 @@ function ImportModal({ onClose }: ImportModalProps) {
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800">
                 <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
-                <p className="text-sm font-medium text-green-700 dark:text-green-400">{result.imported} kayıt içe aktarıldı.</p>
+                <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                  {result.imported} kayıt içe aktarıldı.
+                  {result.createdProducts > 0 && <> {result.createdProducts} yeni ürün kataloğa eklendi.</>}
+                </p>
               </div>
               {result.errors.length > 0 && (
                 <div>
@@ -556,9 +563,10 @@ function ImportModal({ onClose }: ImportModalProps) {
                 <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-2">Beklenen sütunlar:</p>
                 <div className="flex flex-wrap gap-1.5">
                   {[
-                    { col: 'title', req: true }, { col: 'type' }, { col: 'quantity' },
-                    { col: 'budget' }, { col: 'product_name' }, { col: 'sku' },
-                    { col: 'unit' }, { col: 'location' }, { col: 'priority' },
+                    { col: 'title' }, { col: 'type' }, { col: 'warehouse' },
+                    { col: 'product_name' }, { col: 'sku', req: true }, { col: 'quantity' }, { col: 'unit' },
+                    { col: 'unit_price' }, { col: 'min_stock' }, { col: 'batch_number' },
+                    { col: 'expiry_date' }, { col: 'priority' }, { col: 'description' },
                   ].map(({ col, req }) => (
                     <span key={col} className={`px-2 py-0.5 rounded text-xs font-mono ${req ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400'}`}>
                       {col}{req ? ' *' : ''}
@@ -566,7 +574,10 @@ function ImportModal({ onClose }: ImportModalProps) {
                   ))}
                 </div>
                 <p className="text-xs text-zinc-400 mt-2">
-                  <strong>type:</strong> stock_in / stock_out / transfer / adjustment / inspection
+                  <strong>title</strong> veya <strong>product_name</strong> boşsa <strong>sku</strong> zorunludur. <strong>type:</strong> stock_in / stock_out / transfer / adjustment / inspection / stock_count / damage / return_in
+                </p>
+                <p className="text-xs text-zinc-400 mt-1">
+                  <strong>warehouse:</strong> depo adı veya kodu, mevcut bir depoyla eşleşmeli. <strong>sku</strong> katalogda yoksa ürün <strong>otomatik olarak eklenir</strong> (unit_price, min_stock bu ürüne yazılır).
                 </p>
               </div>
             </>

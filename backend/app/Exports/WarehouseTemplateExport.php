@@ -13,9 +13,22 @@ class WarehouseTemplateExport implements FromArray, WithStyles, WithColumnWidths
     public function array(): array
     {
         return [
-            ['title', 'type', 'quantity', 'unit', 'budget', 'product_name', 'sku', 'location', 'priority', 'description'],
-            ['Ürün A Stok Girişi', 'stock_in', '100', 'adet', '5000', 'Ürün A', 'SKU-001', 'Raf-A1', 'medium', 'Aylık stok girişi'],
-            ['Ürün B Çıkış', 'stock_out', '25', 'kg', '', 'Ürün B', 'SKU-002', 'Raf-B2', 'high', ''],
+            [
+                'title', 'type', 'warehouse', 'product_name', 'sku', 'quantity', 'unit',
+                'unit_price', 'min_stock', 'batch_number', 'expiry_date', 'priority', 'description',
+            ],
+            [
+                'Ürün A Stok Girişi', 'stock_in', 'Ana Depo', 'Ürün A', 'SKU-001', '100', 'adet',
+                '150.00', '20', 'LOT-2026-01', '2026-12-31', 'medium', 'Mevcut SKU: katalogdaki ürünle eşleşir',
+            ],
+            [
+                'Ürün C Stok Girişi', 'stock_in', 'Ana Depo', 'Ürün C (Yeni)', 'SKU-099', '50', 'kutu',
+                '75.50', '10', '', '', 'medium', 'Yeni SKU: ürün kataloğa otomatik eklenir',
+            ],
+            [
+                'Ürün B Çıkış', 'stock_out', 'Ana Depo', 'Ürün B', 'SKU-002', '25', 'kg',
+                '', '', '', '', 'high', '',
+            ],
         ];
     }
 
@@ -32,9 +45,8 @@ class WarehouseTemplateExport implements FromArray, WithStyles, WithColumnWidths
     public function columnWidths(): array
     {
         return [
-            'A' => 30, 'B' => 15, 'C' => 12, 'D' => 10,
-            'E' => 12, 'F' => 25, 'G' => 15, 'H' => 20,
-            'I' => 12, 'J' => 35,
+            'A' => 26, 'B' => 12, 'C' => 14, 'D' => 20, 'E' => 12, 'F' => 10, 'G' => 10,
+            'H' => 12, 'I' => 11, 'J' => 14, 'K' => 14, 'L' => 10, 'M' => 38,
         ];
     }
 }

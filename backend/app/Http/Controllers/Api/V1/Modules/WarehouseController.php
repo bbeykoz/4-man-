@@ -426,15 +426,22 @@ class WarehouseController extends BaseModuleController
         Excel::import($import, $request->file('file'));
 
         $this->activityLogService->log('warehouse.records.imported', null, $request->user(), newValues: [
-            'count'       => $import->getImportedCount(),
-            'period_type' => $request->input('period_type'),
+            'count'            => $import->getImportedCount(),
+            'created_products' => $import->getCreatedProductCount(),
+            'period_type'      => $request->input('period_type'),
         ]);
 
+        $message = "{$import->getImportedCount()} kayıt başarıyla içe aktarıldı.";
+        if ($import->getCreatedProductCount() > 0) {
+            $message .= " {$import->getCreatedProductCount()} yeni ürün kataloğa eklendi.";
+        }
+
         return response()->json([
-            'success'  => true,
-            'message'  => "{$import->getImportedCount()} kayıt başarıyla içe aktarıldı.",
-            'imported' => $import->getImportedCount(),
-            'errors'   => $import->getErrors(),
+            'success'          => true,
+            'message'          => $message,
+            'imported'         => $import->getImportedCount(),
+            'created_products' => $import->getCreatedProductCount(),
+            'errors'           => $import->getErrors(),
         ]);
     }
 
