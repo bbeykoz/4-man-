@@ -44,6 +44,12 @@ abstract class BaseModuleController extends Controller
     /** Liste sorgusunda ek olarak yüklenecek ilişkiler (modüller geçersiz kılar). */
     protected array $indexWith = [];
 
+    /** Modüle özgü liste süzgeçleri; alt sınıflar geçersiz kılar. */
+    protected function applyModuleFilters($query, Request $request): void
+    {
+        // Varsayılan: ek süzgeç yok
+    }
+
     abstract protected function getModelClass(): string;
 
     public function index(Request $request): JsonResponse
@@ -83,6 +89,8 @@ abstract class BaseModuleController extends Controller
         if ($dateTo = $request->input('date_to')) {
             $query->where('created_at', '<=', $dateTo . ' 23:59:59');
         }
+
+        $this->applyModuleFilters($query, $request);
 
         $records = $query->with(['createdBy', 'department', ...$this->indexWith])
             ->orderBy($request->input('sort_by', 'created_at'), $request->input('sort_dir', 'desc'))

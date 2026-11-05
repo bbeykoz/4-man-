@@ -140,6 +140,58 @@ class WarehouseController extends BaseModuleController
         ], 201);
     }
 
+    /**
+     * Depo listesine özel süzgeçler.
+     *
+     * Kayıt sayısı büyüdükçe tek bir arama kutusu yetmiyor; kullanıcı ürün, depo,
+     * lot, kalite kontrol durumu ve işlem tarihine göre daraltabilmeli.
+     */
+    protected function applyModuleFilters($query, Request $request): void
+    {
+        $esitlik = [
+            'warehouse_id'    => 'warehouse_id',
+            'to_warehouse_id' => 'to_warehouse_id',
+            'product_id'      => 'product_id',
+            'qc_status'       => 'qc_status',
+            'direction'       => 'direction',
+            'created_by'      => 'created_by',
+        ];
+
+        foreach ($esitlik as $girdi => $sutun) {
+            if ($deger = $request->input($girdi)) {
+                $query->where($sutun, $deger);
+            }
+        }
+
+        if ($no = $request->input('record_number')) {
+            $query->where('record_number', 'ilike', '%' . $no . '%');
+        }
+        if ($lot = $request->input('batch_number')) {
+            $query->where('batch_number', 'ilike', '%' . $lot . '%');
+        }
+        if ($urun = $request->input('product_name')) {
+            $query->where(fn($q) => $q->where('product_name', 'ilike', '%' . $urun . '%')
+                ->orWhere('sku', 'ilike', '%' . $urun . '%')
+                ->orWhereHas('product', fn($p) => $p->where('name', 'ilike', '%' . $urun . '%')
+                    ->orWhere('sku', 'ilike', '%' . $urun . '%')));
+        }
+
+        // İşlem tarihi, kaydın açılış tarihinden farklı olabilir; ayrı süzülür
+        if ($from = $request->input('transaction_from')) {
+            $query->whereDate('transaction_date', '>=', $from);
+        }
+        if ($to = $request->input('transaction_to')) {
+            $query->whereDate('transaction_date', '<=', $to);
+        }
+
+        // Stoğa işlenmiş / işlenmemiş
+        if (($islenmis = $request->input('posted')) !== null && $islenmis !== '') {
+            $request->boolean('posted')
+                ? $query->whereNotNull('posted_at')->whereNull('reversed_at')
+                : $query->where(fn($q) => $q->whereNull('posted_at')->orWhereNotNull('reversed_at'));
+        }
+    }
+
     /** QC alanları sadece kalite kontrol akışıyla, stok alanları sadece işlenmemiş kayıtta değişir. */
     public function update(Request $request, string $id): JsonResponse
     {

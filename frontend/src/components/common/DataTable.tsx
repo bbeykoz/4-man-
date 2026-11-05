@@ -21,6 +21,8 @@ interface DataTableProps<TData> {
   onPaginationChange?: (state: PaginationState) => void
   isLoading?: boolean
   emptyMessage?: string
+  /** Hücreler arasına dikey çizgi koyar; sütunu çok olan listelerde okumayı kolaylaştırır. */
+  bordered?: boolean
 }
 
 export function DataTable<TData>({
@@ -32,7 +34,12 @@ export function DataTable<TData>({
   onPaginationChange,
   isLoading,
   emptyMessage = 'Kayıt bulunamadı.',
+  bordered = false,
 }: DataTableProps<TData>) {
+  // Izgara görünümü: başlık ve hücrelerde sağ kenar çizgisi (son sütun hariç)
+  const hucreCizgi = bordered
+    ? 'border-r border-zinc-200 last:border-r-0 dark:border-zinc-800'
+    : ''
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex, pageSize })
 
   const table = useReactTable({
@@ -80,7 +87,10 @@ export function DataTable<TData>({
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className="px-4 py-3 text-left text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide whitespace-nowrap"
+                      className={cn(
+                        'px-4 py-3 text-left text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide whitespace-nowrap',
+                        hucreCizgi,
+                      )}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </th>
@@ -88,7 +98,10 @@ export function DataTable<TData>({
                 </tr>
               ))}
             </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 bg-white dark:bg-zinc-950">
+            <tbody className={cn(
+              'divide-y bg-white dark:bg-zinc-950',
+              bordered ? 'divide-zinc-200 dark:divide-zinc-800' : 'divide-zinc-100 dark:divide-zinc-800',
+            )}>
               {table.getRowModel().rows.length === 0 ? (
                 <tr>
                   <td colSpan={columns.length} className="py-16 text-center">
@@ -111,7 +124,7 @@ export function DataTable<TData>({
                     className="hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors"
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3 text-zinc-700 dark:text-zinc-300">
+                      <td key={cell.id} className={cn('px-4 py-3 text-zinc-700 dark:text-zinc-300 align-top', hucreCizgi)}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}

@@ -18,6 +18,9 @@ use App\Services\Stock\WarehouseKpiService;
 use App\Services\Stock\WhatIfService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
+use App\Services\Stock\WarehouseSummaryService;
+use App\Services\Stock\WorkstationReportService;
+use App\Support\AppTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -477,6 +480,58 @@ class StockController extends Controller
     private function sayi(float $n): string
     {
         return rtrim(rtrim(number_format($n, 3, '.', ''), '0'), '.');
+    }
+
+    // ─── Panel özeti ────────────────────────────────────────────────
+
+    /** Ana sayfa için depo bölümlerinin tek seferlik özeti. */
+    public function summary(Request $request, WarehouseSummaryService $ozet): JsonResponse
+    {
+        $this->authorizePerm($request, self::VIEW_PERM);
+
+        $data = $request->validate([
+            'days' => ['nullable', 'integer', 'min:1', 'max:90'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $ozet->summary($request->user()->company_id, (int) ($data['days'] ?? 7)),
+        ]);
+    }
+
+    // ─── Workstation raporu ─────────────────────────────────────────
+
+    /** Hangi bölüm / kişi / depo ne kadar çalışmış: işlem, miktar, süre, saatlik yoğunluk. */
+    public function workstation(Request $request, WorkstationReportService $rapor): JsonResponse
+    {
+        $this->authorizePerm($request, self::VIEW_PERM);
+
+        $data = $request->validate([
+            'group_by' => ['nullable', Rule::in(WorkstationReportService::GROUPS)],
+            'days'     => ['nullable', 'integer', 'min:1', 'max:365'],
+            'from'     => ['nullable', 'date'],
+            'to'       => ['nullable', 'date', 'after_or_equal:from'],
+        ], [
+            'to.after_or_equal' => 'Bitiş tarihi başlangıçtan önce olamaz.',
+            'days.max'          => 'En fazla 365 günlük aralık görüntülenebilir.',
+        ]);
+
+        // Tarih verilmişse o aralık, verilmemişse son N gün (varsayılan 7)
+        $bugun = AppTime::today();
+        $bitis = isset($data['to']) ? AppTime::startOfLocalDay($data['to'])->endOfDay() : $bugun->copy()->endOfDay();
+        $baslangic = isset($data['from'])
+            ? AppTime::startOfLocalDay($data['from'])
+            : $bitis->copy()->startOfDay()->subDays(max(0, (int) ($data['days'] ?? 7) - 1));
+
+        return response()->json([
+            'success' => true,
+            'data'    => $rapor->report(
+                $request->user()->company_id,
+                $data['group_by'] ?? 'module',
+                $baslangic,
+                $bitis,
+            ),
+        ]);
     }
 
     // ─── What-if simülasyonu ────────────────────────────────────────

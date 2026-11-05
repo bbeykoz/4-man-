@@ -3,7 +3,7 @@
 import { useCallback } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  Layers, SlidersHorizontal, ArrowLeftRight, Boxes, Bookmark, ShieldAlert, ShoppingCart, CalendarClock,
+  Activity, Layers, SlidersHorizontal, ArrowLeftRight, Boxes, Bookmark, ShieldAlert, ShoppingCart, CalendarClock,
   Shuffle, Siren, FlaskConical, Gauge, Grid3x3, LineChart, Package, ListChecks,
 } from 'lucide-react'
 
@@ -21,16 +21,23 @@ export const WAREHOUSE_TABS = [
   { id: 'depo-transfer', label: 'Depo Transferleri',      icon: Shuffle },
   { id: 'anomaliler',    label: 'Anomaliler',             icon: Siren },
   { id: 'what-if',       label: 'What-if Simülasyonu',    icon: FlaskConical },
+  { id: 'workstation',   label: 'Workstation Raporu',     icon: Activity },
   { id: 'depo-kpi',      label: 'Depo KPI',               icon: Gauge },
   { id: 'abc-xyz',       label: 'ABC / XYZ',              icon: Grid3x3 },
   { id: 'raporlar',      label: 'Raporlar',               icon: LineChart },
   { id: 'paketleme',     label: 'Paketleme & Etiketleme', icon: Package },
 ]
 
+/** Yalnız Depo Müdürü'nde görünen sekmeler; kontrolcü bunları görmez. */
+export const MUDUR_SEKMELERI = ['workstation']
+
+/** Depo Kontrolcüsü sekmeleri: müdüre özel olanlar çıkarılmış hâli. */
+export const WAREHOUSE_CONTROL_TABS = WAREHOUSE_TABS.filter(t => !MUDUR_SEKMELERI.includes(t.id))
+
 /** Kenar menüde alt başlığı olan sayfalar (sadece aktif depo departmanları). */
 export const SIDEBAR_SUB_TABS: Record<string, { id: string; label: string }[]> = {
   '/modules/warehouse':         WAREHOUSE_TABS,
-  '/modules/warehouse-control': WAREHOUSE_TABS,
+  '/modules/warehouse-control': WAREHOUSE_CONTROL_TABS,
 }
 
 /** Aktif sekme URL'deki ?tab= değerinden okunur; böylece kenar menü bağlantıları doğru sekmeyi açar. */

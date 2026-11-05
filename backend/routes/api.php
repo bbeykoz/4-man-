@@ -311,6 +311,12 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
             Route::get('reports/overview',          [StockController::class, 'reportOverview']);
             Route::get('reports/export',            [StockController::class, 'reportExport']);
 
+            // Ana sayfa özeti: depo bölümlerinin tek istekte toplanmış hâli
+            Route::get('summary',                   [StockController::class, 'summary']);
+
+            // Workstation raporu: bölüm / personel / depo bazında iş hacmi
+            Route::get('workstation',               [StockController::class, 'workstation']);
+
             // Booked: siparişe ayrılan stok
             Route::get('reservations',                   [StockReservationController::class, 'index']);
             Route::post('reservations/{id}/deliver',     [StockReservationController::class, 'deliver']);

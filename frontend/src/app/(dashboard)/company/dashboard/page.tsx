@@ -24,6 +24,7 @@ import {
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/common/PageHeader'
 import { ActivitiesCard } from '@/components/common/ActivitiesCard'
+import { WarehouseSections } from '@/components/dashboard/WarehouseSections'
 import {
   ChartMarker,
   DashboardCard,
@@ -744,6 +745,9 @@ export default function CompanyDashboardPage() {
         <RiskTable rows={riskRows} />
         <InsightsPanel rows={riskRows} suppliers={overview.supplier_delay} />
       </div>
+
+      {/* Depo bölümleri özeti — her kart ilgili sekmeye bağlanır */}
+      <WarehouseSections days={period === 180 ? 90 : period} />
 
       {/* Ekip ve hareketler */}
       <div className="grid min-w-0 gap-3 lg:grid-cols-3">

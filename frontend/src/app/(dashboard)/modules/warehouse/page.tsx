@@ -24,6 +24,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { QcBadge, QcDetailModal, QualityCheckPrompt, createRecordWithQualityCheck, type QcAnswer } from '@/components/warehouse/QualityCheck'
 import { RecordDetailModal } from '@/components/warehouse/RecordDetailModal'
+import { RecordFilters, bosFiltre, filtreParametreleri, type RecordFilterValues } from '@/components/warehouse/RecordFilters'
 import { SignatureCell } from '@/components/warehouse/SignaturePad'
 import { WarehouseFields } from '@/components/warehouse/WarehouseFields'
 import { WarehousesModal } from '@/components/warehouse/WarehousesModal'
@@ -39,6 +40,7 @@ import { TransferPanel } from '@/components/warehouse/TransferPanel'
 import { AnomalyPanel } from '@/components/warehouse/AnomalyPanel'
 import { WhatIfPanel } from '@/components/warehouse/WhatIfPanel'
 import { KpiPanel } from '@/components/warehouse/KpiPanel'
+import { WorkstationPanel } from '@/components/warehouse/WorkstationPanel'
 import { AbcXyzPanel } from '@/components/warehouse/AbcXyzPanel'
 import { ReportsPanel } from '@/components/warehouse/ReportsPanel'
 import { WAREHOUSE_TABS, useTabParam } from '@/components/warehouse/tabs'
@@ -1105,12 +1107,12 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
   const qc = useQueryClient()
   const [page, setPage] = useState(0)
   const [search, setSearch] = useState('')
-  const [searchInput, setSearchInput] = useState('')
   const [typeChip, setTypeChip] = useState('all')
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [qcRecord, setQcRecord] = useState<WarehouseRecord | null>(null)
   const [detailRecord, setDetailRecord] = useState<WarehouseRecord | null>(null)
+  const [filtre, setFiltre] = useState<RecordFilterValues>(bosFiltre)
 
   // Her sekme kendi hareket tiplerini kapsar. "Tümü", sekmenin kapsamı demektir;
   // eskiden üç sekme de aynı listeyi gösteriyordu, yalnız düğmeler farklıydı.
@@ -1151,7 +1153,7 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
   const deptFilter = roleLevel === ROLE_LEVELS.DEPARTMENT_MANAGER && user?.department_id ? user.department_id : null
 
   const { data, isLoading } = useQuery({
-    queryKey: ['warehouse-records', tabId, page, search, typeChip, deptFilter],
+    queryKey: ['warehouse-records', tabId, page, search, typeChip, deptFilter, filtre],
     // kapsam tabId'den türüyor, ayrı anahtar gerekmez
     queryFn: () => {
       const params: Record<string, any> = { page: page + 1, per_page: 15 }
@@ -1160,6 +1162,7 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
       if (typeChip !== 'all') params.type = typeChip
       else if (kapsam.length > 0) params.types = kapsam.map(c => c.id).join(',')
       if (deptFilter) params.department_id = deptFilter
+      Object.assign(params, filtreParametreleri(filtre))
       return warehouseService.list(params)
     },
   })
@@ -1188,12 +1191,6 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
     },
     onError: (e) => toast.error(apiErrorMessage(e, 'Durum güncellenemedi.')),
   })
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    setSearch(searchInput)
-    setPage(0)
-  }
 
   const col = createColumnHelper<WarehouseRecord>()
   const columns = [
@@ -1371,15 +1368,7 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <form onSubmit={handleSearch} className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-          <input
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            placeholder="Kayıtlarda ara..."
-            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-400"
-          />
-        </form>
+        <div className="flex-1" />
         <button
           onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
@@ -1388,6 +1377,9 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
           Yeni Kayıt
         </button>
       </div>
+
+      {/* Filtre paneli: alanlar "Ara" ile uygulanır, her tuşta sorgu atılmaz */}
+      <RecordFilters onApply={f => { setFiltre(f); setPage(0) }} total={data?.meta?.total} />
 
       {chips.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -1410,6 +1402,7 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
       <DataTable
         columns={columns as any}
         data={(data?.data ?? []) as WarehouseRecord[]}
+        bordered
         total={data?.meta?.total ?? 0}
         pageIndex={page}
         onPaginationChange={s => setPage(s.pageIndex)}
@@ -1774,6 +1767,7 @@ function WarehousePageContent() {
           {activeTab === 'depo-transfer' && <TransferPanel />}
           {activeTab === 'anomaliler' && <AnomalyPanel />}
           {activeTab === 'what-if' && <WhatIfPanel />}
+          {activeTab === 'workstation' && <WorkstationPanel />}
           {activeTab === 'depo-kpi' && <KpiPanel />}
           {activeTab === 'abc-xyz' && <AbcXyzPanel />}
           {activeTab === 'raporlar' && <ReportsPanel />}
