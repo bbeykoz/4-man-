@@ -14,7 +14,7 @@ import { usePathname } from 'next/navigation'
 import { BrandLoader } from '@/components/common/BrandLoader'
 
 /** Perdenin ekranda kalma süresi (ms). Geçici demo değeri. */
-const GECIS_SURESI_MS = 4000
+const GECIS_SURESI_MS = 2000
 
 export function RouteTransition() {
   const pathname = usePathname()

@@ -3,9 +3,10 @@
 /**
  * Argus Tech yükleme animasyonu.
  *
- * Veriler gelene kadar marka işareti dağılıp tekrar toplanıyor: işaret önce
- * taneciklere ayrılmış halde gelir, netleşir, kısa süre durur, sonra yeniden
- * dağılarak kaybolur ve döngü başa döner.
+ * Veriler gelene kadar marka işareti açılıp kapanıyor. Döngü tamamen kapalı
+ * başlar: işaret taneciklerden toplanarak belirir, kısa süre net durur, sonra
+ * yeniden dağılarak kaybolur. Tur başı ve sonu aynı boş kare olduğu için
+ * tekrarda sıçrama olmuyor.
  *
  * Teknik: mark.png bir raster görsel olduğu için dağılma efekti SVG filtresiyle
  * yapılıyor. feTurbulence bir gürültü dokusu üretir, feDisplacementMap bu
@@ -21,7 +22,7 @@ import { useId } from 'react'
 import { cn } from '@/lib/utils'
 
 /** Bir tam döngünün süresi. Aşamalar bu süreye oranla hesaplanır. */
-const DONGU = '3.4s'
+const DONGU = '2s'
 
 interface Props {
   /** Kenar uzunluğu (px). Satır içi kullanımda 20-24, bölüm ortasında 64-96. */
@@ -53,8 +54,8 @@ export function BrandLoader({ size = 64, frame = true, className, label = 'Yükl
             <feTurbulence type="fractalNoise" baseFrequency="0.028" numOctaves="2" seed="7" result="gurultu">
               <animate
                 attributeName="baseFrequency"
-                values="0.07;0.028;0.028;0.08"
-                keyTimes="0;0.3;0.62;1"
+                values="0.085;0.028;0.028;0.085"
+                keyTimes="0;0.55;0.78;1"
                 dur={DONGU}
                 repeatCount="indefinite"
               />
@@ -63,10 +64,10 @@ export function BrandLoader({ size = 64, frame = true, className, label = 'Yükl
               {/* 0 → net görüntü. Büyük değer → tanecikli dağılma. */}
               <animate
                 attributeName="scale"
-                values="34;0;0;38"
-                keyTimes="0;0.3;0.62;1"
+                values="44;0;0;44"
+                keyTimes="0;0.55;0.78;1"
                 calcMode="spline"
-                keySplines="0.22 1 0.36 1; 0 0 1 1; 0.64 0 0.78 0"
+                keySplines="0.45 0 0.35 1; 0 0 1 1; 0.6 0 0.85 0"
                 dur={DONGU}
                 repeatCount="indefinite"
               />
@@ -85,7 +86,9 @@ export function BrandLoader({ size = 64, frame = true, className, label = 'Yükl
           <animate
             attributeName="opacity"
             values="0;1;1;0"
-            keyTimes="0;0.3;0.62;1"
+            keyTimes="0;0.55;0.78;1"
+            calcMode="spline"
+            keySplines="0.5 0 0.4 1; 0 0 1 1; 0.6 0 0.85 0"
             dur={DONGU}
             repeatCount="indefinite"
           />
@@ -109,9 +112,9 @@ export function BrandLoader({ size = 64, frame = true, className, label = 'Yükl
             <animate
               attributeName="stroke-dashoffset"
               values="352;0;0;-352"
-              keyTimes="0;0.3;0.62;1"
+              keyTimes="0;0.55;0.78;1"
               calcMode="spline"
-              keySplines="0.22 1 0.36 1; 0 0 1 1; 0.64 0 0.78 0"
+              keySplines="0.45 0 0.35 1; 0 0 1 1; 0.6 0 0.85 0"
               dur={DONGU}
               repeatCount="indefinite"
             />
@@ -123,7 +126,9 @@ export function BrandLoader({ size = 64, frame = true, className, label = 'Yükl
             <animate
               attributeName="opacity"
               values="0;1;1;0"
-              keyTimes="0;0.3;0.62;1"
+              keyTimes="0;0.55;0.78;1"
+              calcMode="spline"
+              keySplines="0.5 0 0.4 1; 0 0 1 1; 0.6 0 0.85 0"
               dur={DONGU}
               repeatCount="indefinite"
             />
