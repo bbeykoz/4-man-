@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertOctagon, ArrowRightLeft, Loader2, Trash2 } from 'lucide-react'
+import { AlertOctagon, ArrowRightLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { get, post } from '@/lib/api'
 import { cn, formatDate } from '@/lib/utils'
@@ -76,7 +77,7 @@ export function ExpiryPanel() {
     onError: (e) => { setPending(null); toast.error(apiErrorMessage(e, 'Kayıt oluşturulamadı.')) },
   })
 
-  if (isLoading || !data) return <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></div>
+  if (isLoading || !data) return <BrandLoaderBlock size={64} />
 
   const s = data.summary
   const cards = [

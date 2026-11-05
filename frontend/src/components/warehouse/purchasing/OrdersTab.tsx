@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, FileText, Loader2, PackageCheck, Plus, Search, Send, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -114,7 +115,7 @@ export function OrdersTab() {
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {isLoading ? (
-              <tr><td colSpan={8} className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></td></tr>
+              <tr><td colSpan={8}><BrandLoaderBlock size={56} className="py-10" /></td></tr>
             ) : (data ?? []).length === 0 ? (
               <tr><td colSpan={8} className="py-12 text-center text-zinc-400">Sipariş yok.</td></tr>
             ) : data!.map(po => (
@@ -254,7 +255,7 @@ function OrderModal({ id, onClose }: { id: string; onClose: () => void }) {
         </div>
 
         {isLoading || !po ? (
-          <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-zinc-400" /></div>
+          <BrandLoaderBlock size={64} />
         ) : (
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
             {mode === 'receive' && (

@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckSquare, Loader2, ShoppingCart, Square } from 'lucide-react'
+import { CheckSquare, ShoppingCart, Square } from 'lucide-react'
 import { toast } from 'sonner'
 import { get, post } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -85,7 +86,7 @@ export function SuggestionsTab({ onCreated }: { onCreated: () => void }) {
     createMutation.mutate()
   }
 
-  if (isLoading) return <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></div>
+  if (isLoading) return <BrandLoaderBlock size={64} />
 
   if (data.length === 0) {
     return <p className="py-12 text-center text-sm text-zinc-400">Şu an sipariş gereken ürün yok. Taslak veya yoldaki siparişler ihtiyacı karşılıyor.</p>

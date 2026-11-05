@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useQuery } from '@tanstack/react-query'
 import { createColumnHelper } from '@tanstack/react-table'
-import { AlertTriangle, Loader2, Search, X } from 'lucide-react'
+import { AlertTriangle, Search, X } from 'lucide-react'
 import { DataTable } from '@/components/common/DataTable'
 import { get } from '@/lib/api'
 import { cn, formatDate, formatDateTime } from '@/lib/utils'
@@ -133,7 +134,7 @@ function ProductStockModal({ productId, onClose }: { productId: string; onClose:
         </div>
 
         {isLoading || !data ? (
-          <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-zinc-400" /></div>
+          <BrandLoaderBlock size={64} />
         ) : (
           <div className="flex-1 overflow-y-auto p-5 space-y-6">
             <section>

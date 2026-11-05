@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Award, Lightbulb, Loader2 } from 'lucide-react'
+import { Award, Lightbulb } from 'lucide-react'
 import { toast } from 'sonner'
 import { get, post, put } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -125,7 +126,7 @@ export function SupplierPerformanceTab() {
     onError: (e) => toast.error(apiErrorMessage(e, 'Güncellenemedi.')),
   })
 
-  if (isLoading || !data) return <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></div>
+  if (isLoading || !data) return <BrandLoaderBlock size={64} />
 
   if (data.suppliers.length === 0) {
     return <p className="py-12 text-center text-sm text-zinc-400">Seçilen dönemde gönderilmiş sipariş yok. Performans, gönderilen ve teslim alınan siparişlerden hesaplanır.</p>

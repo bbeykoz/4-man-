@@ -1,8 +1,9 @@
 'use client'
 
 import { Fragment, useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, Loader2, Search, Settings2, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Search, Settings2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { SaveButton } from '@/components/common/SaveButton'
 import { get, put } from '@/lib/api'
@@ -129,7 +130,7 @@ export function StockRiskPanel() {
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {isLoading ? (
-              <tr><td colSpan={9} className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></td></tr>
+              <tr><td colSpan={9}><BrandLoaderBlock size={56} className="py-10" /></td></tr>
             ) : rows.length === 0 ? (
               <tr><td colSpan={9} className="py-12 text-center text-zinc-400">Ürün yok.</td></tr>
             ) : rows.map((r) => {

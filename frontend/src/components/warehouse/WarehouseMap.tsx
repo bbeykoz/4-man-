@@ -3,8 +3,9 @@
 // Animasyon: watermelon "view on map". Küçük düğme, aynı layoutId ile haritaya büyür.
 // Harita Google Maps'in gömülü sürümü; adres bilgisi Google'a gider.
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { AnimatePresence, motion } from 'motion/react'
-import { Loader2, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { MapPin } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -83,7 +84,7 @@ export function WarehouseMap({ query, label = 'Haritada gör', className }: Ware
 
             {!loaded && (
               <div className="absolute inset-0 flex items-center justify-center bg-zinc-100 dark:bg-zinc-800">
-                <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+                <BrandLoaderBlock size={64} className="py-0" />
               </div>
             )}
 

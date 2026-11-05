@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useQuery } from '@tanstack/react-query'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -130,7 +131,7 @@ export function ReportsPanel() {
     }
   }
 
-  if (isLoading || !data) return <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></div>
+  if (isLoading || !data) return <BrandLoaderBlock size={64} />
 
   const d = data.data
   const monthly = d.monthly_volume

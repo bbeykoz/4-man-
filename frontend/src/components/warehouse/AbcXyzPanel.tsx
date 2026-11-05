@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckSquare, Loader2, ShieldCheck, Square, X } from 'lucide-react'
+import { CheckSquare, ShieldCheck, Square, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { get, post } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -70,7 +71,7 @@ export function AbcXyzPanel() {
     onError: (e) => { setConfirm(false); toast.error(apiErrorMessage(e, 'Uygulanamadı.')) },
   })
 
-  if (isLoading || !data) return <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></div>
+  if (isLoading || !data) return <BrandLoaderBlock size={64} />
 
   const rows = cell ? data.rows.filter(r => r.class === cell) : data.rows
   const chosen = rows.filter(r => selected[r.product_id])

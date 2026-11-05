@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { del, post, put } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -113,7 +114,7 @@ export function SuppliersTab() {
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {isLoading ? (
-              <tr><td colSpan={6} className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></td></tr>
+              <tr><td colSpan={6}><BrandLoaderBlock size={56} className="py-10" /></td></tr>
             ) : suppliers.length === 0 ? (
               <tr><td colSpan={6} className="py-12 text-center text-zinc-400">Tedarikçi yok.</td></tr>
             ) : suppliers.map(s => (

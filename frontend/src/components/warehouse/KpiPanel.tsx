@@ -1,8 +1,9 @@
 'use client'
 
 import { Fragment, useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronRight, Loader2, Minus } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronRight, Minus } from 'lucide-react'
 import { get } from '@/lib/api'
 import { cn, formatDate } from '@/lib/utils'
 import { useWarehouses } from './stock'
@@ -94,7 +95,7 @@ export function KpiPanel() {
       </div>
 
       {isLoading || !data ? (
-        <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></div>
+        <BrandLoaderBlock size={64} />
       ) : (<>
         <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
           <table className="w-full text-sm">

@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, RefreshCw, RotateCcw, Siren, XCircle } from 'lucide-react'
+import { RefreshCw, RotateCcw, Siren, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { get, patch, post } from '@/lib/api'
 import { cn, formatDate, formatDateTime } from '@/lib/utils'
@@ -123,7 +124,7 @@ export function AnomalyPanel() {
       </div>
 
       {isLoading ? (
-        <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></div>
+        <BrandLoaderBlock size={64} />
       ) : items.length === 0 ? (
         <div className="py-12 text-center space-y-1">
           <Siren className="h-6 w-6 text-zinc-300 inline" />

@@ -4,6 +4,8 @@ import { useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Ban, AlertTriangle } from 'lucide-react'
+import { BrandLoader } from '@/components/common/BrandLoader'
+import { RouteTransition } from '@/components/layout/RouteTransition'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { ImpersonationBanner } from '@/components/layout/ImpersonationBanner'
 import { Topbar } from '@/components/layout/Topbar'
@@ -26,8 +28,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!_hasHydrated) {
     return (
-      <div className="flex h-screen items-center justify-center bg-zinc-950">
-        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="flex h-screen items-center justify-center bg-zinc-950 text-zinc-500">
+        <BrandLoader size={112} />
       </div>
     )
   }
@@ -40,6 +42,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-900">
+      <RouteTransition />
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <ImpersonationBanner />

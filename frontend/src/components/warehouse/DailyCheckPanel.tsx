@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Loader2, MessageSquarePlus,
@@ -235,7 +236,7 @@ export function DailyCheckPanel() {
       </div>
 
       {isLoading || !data ? (
-        <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></div>
+        <BrandLoaderBlock size={64} />
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

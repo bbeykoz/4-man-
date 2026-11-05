@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, CheckSquare, Loader2, Shuffle, Square } from 'lucide-react'
+import { ArrowRight, CheckSquare, Shuffle, Square } from 'lucide-react'
 import { toast } from 'sonner'
 import { get, post } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -89,7 +90,7 @@ export function TransferPanel() {
     onError: (e) => toast.error(apiErrorMessage(e, 'Transfer emri oluşturulamadı.')),
   })
 
-  if (isLoading || !data) return <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></div>
+  if (isLoading || !data) return <BrandLoaderBlock size={64} />
 
   if (data.message) {
     return (

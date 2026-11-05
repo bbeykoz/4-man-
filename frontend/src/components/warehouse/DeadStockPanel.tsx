@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, Loader2, Lightbulb } from 'lucide-react'
+import { Ban, Lightbulb } from 'lucide-react'
 import { toast } from 'sonner'
 import { get, post } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -71,7 +72,7 @@ export function DeadStockPanel() {
     onError: (e) => { setConfirmAll(false); toast.error(apiErrorMessage(e, 'Güncellenemedi.')) },
   })
 
-  if (isLoading || !data) return <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-400 inline" /></div>
+  if (isLoading || !data) return <BrandLoaderBlock size={64} />
 
   const rows = filter ? data.rows.filter(r => r.class === filter) : data.rows
   const sr = data.stop_reorder

@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useRef, useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ClipboardCheck, Plus, Trash2, Search, X,
@@ -789,7 +790,7 @@ function ProductCatalogModal({ onClose }: { onClose: () => void }) {
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 text-zinc-400 animate-spin" />
+              <BrandLoaderBlock size={64} className="py-0" />
             </div>
           ) : products.length === 0 ? (
             <div className="text-center py-12">

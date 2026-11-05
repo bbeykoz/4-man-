@@ -3,8 +3,9 @@
 // Booked: siparişe ayrılan stok. Stok çıkışı kaydı açılınca ürün serbest stoktan
 // rezerveye geçer, böylece verilen siparişler depodaki stokla karışmaz.
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bookmark, CheckCircle2, Loader2, PackageCheck, PlusCircle, Search, TriangleAlert, X } from 'lucide-react'
+import { Bookmark, CheckCircle2, PackageCheck, PlusCircle, Search, TriangleAlert, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { get, post } from '@/lib/api'
 import { cn, formatDate } from '@/lib/utils'
@@ -267,7 +268,7 @@ export function BookedPanel() {
       {/* Liste */}
       <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
         {isLoading ? (
-          <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-zinc-400" /></div>
+          <BrandLoaderBlock size={64} />
         ) : rows.length === 0 ? (
           <p className="py-12 text-center text-sm text-zinc-500">
             {status === 'open' ? 'Açık sipariş yok. Stok çıkışı kaydı açtığınızda burada görünür.' : 'Kayıt yok.'}

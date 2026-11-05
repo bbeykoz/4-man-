@@ -4,9 +4,10 @@
 // Dört ölçü: işlem adedi, taşınan miktar, ortalama işlem süresi, saatlik yoğunluk.
 // Her ölçü bir önceki eşit uzunluktaki dönemle karşılaştırılır.
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Activity, Boxes, Building2, Clock, Loader2, Timer, TrendingDown, TrendingUp, Users,
+  Activity, Boxes, Building2, Clock, Timer, TrendingDown, TrendingUp, Users,
 } from 'lucide-react'
 import { get } from '@/lib/api'
 import { cn, formatDateTime, todayInput } from '@/lib/utils'
@@ -136,7 +137,7 @@ export function WorkstationPanel() {
   })
 
   if (isLoading) {
-    return <div className="py-12 text-center"><Loader2 className="inline h-5 w-5 animate-spin text-zinc-400" /></div>
+    return <BrandLoaderBlock size={64} />
   }
   if (isError || !data) {
     return <p className="py-12 text-center text-sm text-zinc-500">Rapor yüklenemedi.</p>

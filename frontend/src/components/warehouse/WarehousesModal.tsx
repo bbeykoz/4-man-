@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Building2, Loader2, Pencil, Plus, Star, Trash2, X } from 'lucide-react'
+import { Building2, Pencil, Plus, Star, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { del, post, put } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -129,7 +130,7 @@ export function WarehousesModal({ onClose }: { onClose: () => void }) {
 
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-zinc-400" /></div>
+            <BrandLoaderBlock size={64} />
           ) : (
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {warehouses.map(w => (

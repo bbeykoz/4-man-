@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { motion } from 'motion/react'
 import { StepPanel, StepDots } from '@/components/common/StepPanel'
 import { SignaturePad } from './SignaturePad'
@@ -423,7 +424,7 @@ export function QcDetailModal({ record, modulePath, onClose, onApproved }: QcDet
               {record.qc_has_photo ? (
                 <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 min-h-40 flex items-center justify-center">
                   {loadingPhoto ? (
-                    <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+                    <BrandLoaderBlock size={64} className="py-0" />
                   ) : photoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- yetkili blob URL
                     <img src={photoUrl} alt="Kalite kontrol görseli" className="w-full max-h-[60vh] object-contain" />
