@@ -18,9 +18,9 @@ import { usePathname } from 'next/navigation'
 import { BrandLoader } from '@/components/common/BrandLoader'
 
 /** Perdenin tam opak kaldığı süre (ms). Geçici demo değeri. */
-const GECIS_SURESI_MS = 2000
-/** Perdenin sönme süresi (ms). Aşağıdaki duration-500 ile aynı olmalı. */
-const SONME_MS = 500
+const GECIS_SURESI_MS = 500
+/** Perdenin sönme süresi (ms). Aşağıdaki duration-[250ms] ile aynı olmalı. */
+const SONME_MS = 250
 
 type Asama = 'acik' | 'soner' | 'kapali'
 
@@ -51,7 +51,7 @@ export function RouteTransition() {
       aria-live="polite"
       className={
         'fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-zinc-950 ' +
-        'text-zinc-500 transition-opacity duration-500 ' +
+        'text-zinc-500 transition-opacity duration-[250ms] ' +
         (asama === 'soner' ? 'pointer-events-none opacity-0' : 'opacity-100')
       }
     >
