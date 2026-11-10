@@ -139,6 +139,19 @@ class User extends Authenticatable
         return $this->roles()->min('level') ?? 5;
     }
 
+    /**
+     * İzin önbelleğini temizler.
+     *
+     * getPermissions() 10 dakika önbellekliyor. Rol ataması değiştiğinde
+     * önbellek kendiliğinden düşmüyordu; kullanıcı yeni yetkisini 10 dakika
+     * alamıyor, kaldırılan yetkisini 10 dakika kullanmaya devam ediyordu.
+     * İkincisi güvenlik sorunu. Rolün değiştiği her yerde bu çağrılmalı.
+     */
+    public function flushPermissionCache(): void
+    {
+        Cache::forget("user_perms_{$this->id}_{$this->company_id}");
+    }
+
     public function getPermissions(): \Illuminate\Support\Collection
     {
         return Cache::remember(

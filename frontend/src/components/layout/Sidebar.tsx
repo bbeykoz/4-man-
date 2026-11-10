@@ -20,6 +20,7 @@ import { useT } from '@/lib/i18n'
 import { useQuery } from '@tanstack/react-query'
 import { get } from '@/lib/api'
 import { SIDEBAR_SUB_TABS } from '@/components/warehouse/tabs'
+import { ACCOUNTING_SIDEBAR_TABS } from '@/components/accounting/tabs'
 
 const iconMap: Record<string, React.ElementType> = {
   LayoutDashboard, Building2, Users, Shield, Boxes, Calculator, Megaphone,
@@ -93,7 +94,13 @@ function getSidebarNav(
     { label: t('nav.returns'),            href: '/modules/returns',            icon: 'RotateCcw',     permission: 'returns.staff.view' },
     { label: t('nav.customs'),            href: '/modules/customs',            icon: 'Globe',         permission: 'customs.staff.view' },
     { label: t('nav.shipping'),           href: '/modules/shipping',           icon: 'Truck',         permission: 'shipping.staff.view' },
-  ].map(item => ({ ...item, children: SIDEBAR_SUB_TABS[item.href] }))
+  // Alt başlıklar: depo modülleri warehouse/tabs'tan, muhasebe kendi sekmelerinden.
+  ].map(item => ({
+    ...item,
+    children: item.href === '/modules/accounting'
+      ? ACCOUNTING_SIDEBAR_TABS
+      : SIDEBAR_SUB_TABS[item.href],
+  }))
 
   // Pasif departmanlar ayrı grupta; aktifler "Departmanlar" altında kalır
   nav.push({ title: t('nav.group.departments'), items: departmentItems.filter(i => !isPassive(i.href)) })

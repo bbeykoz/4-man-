@@ -76,6 +76,7 @@ class PlatformTeamController extends Controller
             'assigned_at' => now(),
             'assigned_by' => $request->user()->id,
         ]);
+        $user->flushPermissionCache();
 
         $this->logger->log(
             action: 'platform.team.created',
@@ -123,6 +124,7 @@ class PlatformTeamController extends Controller
                 'assigned_at' => now(),
                 'assigned_by' => $request->user()->id,
             ]]);
+            $user->flushPermissionCache();
         }
 
         $user->update(array_filter([

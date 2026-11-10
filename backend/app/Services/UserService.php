@@ -44,6 +44,7 @@ class UserService
                     'assigned_by' => $creator->id,
                     'assigned_at' => now(),
                 ]);
+                $user->flushPermissionCache();
             }
 
             $this->activityLogService->log(
@@ -92,6 +93,7 @@ class UserService
                     'assigned_by' => $updater->id,
                     'assigned_at' => now(),
                 ]]);
+                $user->flushPermissionCache();
                 $user->clearPermissionCache();
             }
 
@@ -142,6 +144,7 @@ class UserService
         DB::transaction(function () use ($user, $actor) {
             $user->tokens()->delete();
             $user->roles()->detach();
+            $user->flushPermissionCache();
             $this->userRepository->delete($user);
 
             $this->activityLogService->log(

@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\CompanyStatus;
+use App\Support\CountryPack;
+use Carbon\CarbonImmutable;
 use App\Enums\PlanType;
 use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -27,7 +29,42 @@ class Company extends Model
             'settings' => 'array',
             'max_users'=> 'integer',
             'max_departments' => 'integer',
+            'fiscal_year_start_month' => 'integer',
+            'vat_registered'          => 'boolean',
+            'vat_registered_at'       => 'date',
         ];
+    }
+
+    // ─── Ülke paketi ────────────────────────────────────────────────
+
+    /** Şirketin ülke paketi: para birimi, saat dilimi, vergi kodları, hesap planı şablonu. */
+    public function countryPack(): array
+    {
+        return CountryPack::forCompany($this);
+    }
+
+    /** Defter para birimi. İşlem para birimi belge bazında farklı olabilir. */
+    public function functionalCurrency(): string
+    {
+        return $this->functional_currency ?: $this->countryPack()['currency'];
+    }
+
+    /** Mali yılın verilen takvim yılındaki başlangıç tarihi. */
+    public function fiscalYearStart(int $yil): CarbonImmutable
+    {
+        return CarbonImmutable::create($yil, $this->fiscal_year_start_month ?: 1, 1)->startOfDay();
+    }
+
+    /** Resmi belgelerin dili; arayüz dilinden ayrıdır. */
+    public function documentLocale(): string
+    {
+        return $this->document_locale ?: $this->countryPack()['document_locale'];
+    }
+
+    /** Ülke paketinde bu raporlama yükümlülüğü var mı (saf_t, vies, e_fatura …). */
+    public function requiresReporting(string $anahtar): bool
+    {
+        return (bool) data_get($this->countryPack(), "reporting.$anahtar", false);
     }
 
     // ─── Relations ──────────────────────────────────────────────────

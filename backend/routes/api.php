@@ -7,6 +7,19 @@ use App\Http\Controllers\Api\V1\Company\RoleController;
 use App\Http\Controllers\Api\V1\Company\UserController;
 use App\Http\Controllers\Api\V1\CopilotController;
 use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\Accounting\AccountingPeriodController;
+use App\Http\Controllers\Api\V1\Accounting\AccountingSetupController;
+use App\Http\Controllers\Api\V1\Accounting\AuthorizationController;
+use App\Http\Controllers\Api\V1\Accounting\BankingController;
+use App\Http\Controllers\Api\V1\Accounting\ChartAccountController;
+use App\Http\Controllers\Api\V1\Accounting\CurrencyController;
+use App\Http\Controllers\Api\V1\Accounting\DocumentController;
+use App\Http\Controllers\Api\V1\Accounting\InventoryBridgeController;
+use App\Http\Controllers\Api\V1\Accounting\JournalEntryController;
+use App\Http\Controllers\Api\V1\Accounting\LedgerReportController;
+use App\Http\Controllers\Api\V1\Accounting\PartnerController;
+use App\Http\Controllers\Api\V1\Accounting\TaxCodeController;
+use App\Http\Controllers\Api\V1\Accounting\VatController;
 use App\Http\Controllers\Api\V1\Modules\AccountingController;
 use App\Http\Controllers\Api\V1\Modules\CustomsController;
 use App\Http\Controllers\Api\V1\Modules\DailyCheckController;
@@ -239,17 +252,22 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
     // ──────────────────────────────────────────────────────────────
     // MODULES  (ortak pattern: BaseModuleController)
     // ──────────────────────────────────────────────────────────────
-    $moduleRoutes = function (string $controller) {
+    // Tüm modül kayıtlarının kimliği UUID. Desen kısıtı olmadan
+    // /modules/accounting/chart-accounts gibi bir alt yol {id} ile eşleşip
+    // veritabanına "chart-accounts" kimliğiyle gidiyor ve 500 dönüyor.
+    $uuid = '[0-9a-fA-F-]{36}';
+
+    $moduleRoutes = function (string $controller) use ($uuid) {
         Route::get('/',              [$controller, 'index']);
         Route::post('/',             [$controller, 'store']);
-        Route::get('{id}',           [$controller, 'show']);
-        Route::put('{id}',           [$controller, 'update']);
-        Route::delete('{id}',        [$controller, 'destroy']);
-        Route::patch('{id}/status',  [$controller, 'updateStatus']);
-        Route::get('{id}/comments',  [$controller, 'comments']);
-        Route::post('{id}/comments', [$controller, 'addComment']);
-        Route::post('{id}/attachments', [$controller, 'addAttachment']);
-        Route::get('{id}/history',   [$controller, 'history']);
+        Route::get('{id}',           [$controller, 'show'])->where('id', $uuid);
+        Route::put('{id}',           [$controller, 'update'])->where('id', $uuid);
+        Route::delete('{id}',        [$controller, 'destroy'])->where('id', $uuid);
+        Route::patch('{id}/status',  [$controller, 'updateStatus'])->where('id', $uuid);
+        Route::get('{id}/comments',  [$controller, 'comments'])->where('id', $uuid);
+        Route::post('{id}/comments', [$controller, 'addComment'])->where('id', $uuid);
+        Route::post('{id}/attachments', [$controller, 'addAttachment'])->where('id', $uuid);
+        Route::get('{id}/history',   [$controller, 'history'])->where('id', $uuid);
     };
 
     Route::prefix('modules')->group(function () use ($moduleRoutes) {
@@ -368,6 +386,201 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
             Route::post('tasks',              [DailyCheckController::class, 'storeTask']);
             Route::put('tasks/{id}',          [DailyCheckController::class, 'updateTask']);
             Route::delete('tasks/{id}',       [DailyCheckController::class, 'destroyTask']);
+        });
+
+        // ─── Muhasebe: genel muhasebe çekirdeği ──────────────────────
+        // Modül pasifken de süper admin erişebilir (module.enabled kuralı).
+        Route::prefix('accounting')->middleware('module.enabled:accounting')->group(function () {
+
+            Route::prefix('chart-accounts')->group(function () {
+                Route::get('/',                   [ChartAccountController::class, 'index']);
+                Route::get('tree',                [ChartAccountController::class, 'tree']);
+                Route::post('install-template',   [ChartAccountController::class, 'installTemplate']);
+                Route::post('/',                  [ChartAccountController::class, 'store']);
+                Route::get('{id}',                [ChartAccountController::class, 'show']);
+                Route::put('{id}',                [ChartAccountController::class, 'update']);
+                Route::delete('{id}',             [ChartAccountController::class, 'destroy']);
+                Route::post('{id}/deactivate',    [ChartAccountController::class, 'deactivate']);
+            });
+
+            Route::prefix('periods')->group(function () {
+                Route::get('/',                   [AccountingPeriodController::class, 'index']);
+                Route::post('generate',           [AccountingPeriodController::class, 'generate']);
+                Route::get('{id}',                [AccountingPeriodController::class, 'show']);
+                Route::post('{id}/start-closing', [AccountingPeriodController::class, 'startClosing']);
+                Route::post('{id}/close',         [AccountingPeriodController::class, 'close']);
+                Route::post('{id}/reopen',        [AccountingPeriodController::class, 'reopen']);
+                Route::post('{id}/lock',          [AccountingPeriodController::class, 'lock']);
+            });
+
+            // Kurulum: hesap rolleri, numara serileri, tek adımda kurulum
+            // Muhasebe özeti (müdür ekranı ve özet sekmesi)
+            Route::get('dashboard', [AccountingSetupController::class, 'dashboard']);
+
+            Route::prefix('setup')->group(function () {
+                Route::get('status',     [AccountingSetupController::class, 'status']);
+                Route::post('bootstrap', [AccountingSetupController::class, 'bootstrap']);
+                Route::get('roles',      [AccountingSetupController::class, 'roleListing']);
+                Route::post('roles',     [AccountingSetupController::class, 'setRole']);
+                Route::get('series',     [AccountingSetupController::class, 'seriesIndex']);
+                Route::post('series',    [AccountingSetupController::class, 'seriesStore']);
+                Route::put('series/{id}',    [AccountingSetupController::class, 'seriesUpdate']);
+                Route::delete('series/{id}', [AccountingSetupController::class, 'seriesDestroy']);
+                Route::get('series/{id}/gap-check', [AccountingSetupController::class, 'seriesGapCheck']);
+            });
+
+            // Çoklu para: kur tablosu, çevrim, dönem sonu değerleme
+            Route::prefix('currency')->group(function () {
+                Route::get('overview',          [CurrencyController::class, 'overview']);
+                Route::get('rates',             [CurrencyController::class, 'rates']);
+                Route::post('rates',            [CurrencyController::class, 'storeRate']);
+                Route::post('rates/install-fixed', [CurrencyController::class, 'installFixed']);
+                Route::post('convert',          [CurrencyController::class, 'convert']);
+                Route::get('revaluations',      [CurrencyController::class, 'revaluations']);
+                Route::get('revaluations/preview', [CurrencyController::class, 'revaluationPreview']);
+                Route::post('revaluations',     [CurrencyController::class, 'runRevaluation']);
+                Route::post('revaluations/{id}/reverse', [CurrencyController::class, 'reverseRevaluation']);
+            });
+
+            // Yetkilendirme: roller, görev ayrılığı, onay matrisi
+            Route::prefix('authorization')->group(function () {
+                Route::get('roles',           [AuthorizationController::class, 'roles']);
+                Route::post('roles/install',  [AuthorizationController::class, 'installRoles']);
+                Route::get('duty-report',     [AuthorizationController::class, 'dutyReport']);
+                Route::get('users/{userId}/conflicts',  [AuthorizationController::class, 'userConflicts']);
+                Route::post('users/{userId}/preview-role', [AuthorizationController::class, 'previewRole']);
+                Route::post('users/{userId}/exceptions',   [AuthorizationController::class, 'grantException']);
+                Route::delete('exceptions/{id}', [AuthorizationController::class, 'revokeException']);
+                Route::get('approval-matrix',    [AuthorizationController::class, 'matrix']);
+                Route::post('approval-matrix/install', [AuthorizationController::class, 'installMatrix']);
+                Route::post('approval-matrix',        [AuthorizationController::class, 'storeRule']);
+                Route::put('approval-matrix/{id}',    [AuthorizationController::class, 'updateRule']);
+                Route::delete('approval-matrix/{id}', [AuthorizationController::class, 'destroyRule']);
+            });
+
+            // KDV merkezi: defterler, VIES, beyan
+            Route::prefix('vat')->group(function () {
+                Route::get('overview',       [VatController::class, 'overview']);
+                Route::get('sales-book',     [VatController::class, 'salesBook']);
+                Route::get('purchase-book',  [VatController::class, 'purchaseBook']);
+                Route::get('vies',           [VatController::class, 'vies']);
+                Route::get('returns',        [VatController::class, 'returns']);
+                Route::post('returns',       [VatController::class, 'prepare']);
+                Route::get('returns/{id}',   [VatController::class, 'showReturn']);
+                Route::post('returns/{id}/validate', [VatController::class, 'validateReturn']);
+                Route::post('returns/{id}/submit',   [VatController::class, 'submit']);
+                Route::post('returns/{id}/response', [VatController::class, 'markResponse']);
+            });
+
+            // Depo–muhasebe köprüsü: olay kuyruğu ve çift yönlü drill-down
+            Route::prefix('inventory-bridge')->group(function () {
+                Route::get('status',        [InventoryBridgeController::class, 'status']);
+                Route::get('events',        [InventoryBridgeController::class, 'index']);
+                Route::post('process',      [InventoryBridgeController::class, 'process']);
+                Route::get('events/{id}',   [InventoryBridgeController::class, 'show']);
+                Route::post('events/{id}/retry', [InventoryBridgeController::class, 'retry']);
+                Route::get('by-record/{recordId}', [InventoryBridgeController::class, 'forWarehouseRecord']);
+                Route::get('by-entry/{entryId}',   [InventoryBridgeController::class, 'forJournalEntry']);
+            });
+
+            // Banka, kasa, tahsilat/ödeme, ekstre ve mutabakat
+            Route::prefix('banking')->group(function () {
+                Route::get('accounts',             [BankingController::class, 'accounts']);
+                Route::post('accounts',            [BankingController::class, 'storeAccount']);
+                Route::put('accounts/{id}',        [BankingController::class, 'updateAccount']);
+                Route::get('accounts/{id}/balance',[BankingController::class, 'accountBalance']);
+                Route::get('accounts/{id}/reconcile', [BankingController::class, 'reconcile']);
+                Route::get('accounts/{id}/cash-status', [BankingController::class, 'cashStatus']);
+                Route::get('accounts/{id}/cash-counts', [BankingController::class, 'cashCounts']);
+                Route::post('accounts/{id}/cash-counts', [BankingController::class, 'recordCashCount']);
+
+                Route::get('payments',             [BankingController::class, 'payments']);
+                Route::post('payments',            [BankingController::class, 'storePayment']);
+                Route::get('payments/{id}',        [BankingController::class, 'showPayment']);
+                Route::post('payments/{id}/allocate', [BankingController::class, 'allocatePayment']);
+                Route::post('payments/{id}/submit',   [BankingController::class, 'submitPayment']);
+                Route::post('payments/{id}/approve',  [BankingController::class, 'approvePayment']);
+                Route::post('payments/{id}/post',     [BankingController::class, 'postPayment']);
+                Route::post('payments/{id}/cancel',   [BankingController::class, 'cancelPayment']);
+
+                Route::get('statements',           [BankingController::class, 'statements']);
+                Route::post('statements/import',   [BankingController::class, 'importStatement']);
+                Route::post('statements/{id}/suggest', [BankingController::class, 'suggestForStatement']);
+
+                Route::get('transactions',                 [BankingController::class, 'transactions']);
+                Route::get('transactions/{id}/suggestions',[BankingController::class, 'suggestMatches']);
+                Route::post('transactions/{id}/match',     [BankingController::class, 'confirmMatch']);
+                Route::post('transactions/{id}/ignore',    [BankingController::class, 'ignoreTransaction']);
+                Route::post('transactions/{id}/unmatch',   [BankingController::class, 'unmatchTransaction']);
+            });
+
+            Route::prefix('partners')->group(function () {
+                Route::get('/',                  [PartnerController::class, 'index']);
+                Route::post('/',                 [PartnerController::class, 'store']);
+                Route::get('ageing',             [PartnerController::class, 'ageing']);
+                Route::get('{id}',               [PartnerController::class, 'show']);
+                Route::put('{id}',               [PartnerController::class, 'update']);
+                Route::delete('{id}',            [PartnerController::class, 'destroy']);
+                Route::post('{id}/block',        [PartnerController::class, 'block']);
+                Route::post('{id}/unblock',      [PartnerController::class, 'unblock']);
+                Route::get('{id}/addresses',     [PartnerController::class, 'addresses']);
+                Route::post('{id}/addresses',    [PartnerController::class, 'storeAddress']);
+                Route::delete('{id}/addresses/{addressId}', [PartnerController::class, 'destroyAddress']);
+                Route::get('{id}/statement',     [PartnerController::class, 'statement']);
+                Route::get('{id}/open-items',    [PartnerController::class, 'openItems']);
+                Route::get('{id}/credit-check',  [PartnerController::class, 'creditCheck']);
+                Route::get('{id}/offset-proposal', [PartnerController::class, 'offsetProposal']);
+                Route::post('{id}/offset',       [PartnerController::class, 'offset']);
+            });
+
+            Route::prefix('documents')->group(function () {
+                Route::get('/',             [DocumentController::class, 'index']);
+                Route::post('/',            [DocumentController::class, 'store']);
+                Route::get('{id}',          [DocumentController::class, 'show']);
+                Route::put('{id}',          [DocumentController::class, 'update']);
+                Route::delete('{id}',       [DocumentController::class, 'destroy']);
+                Route::post('{id}/issue',   [DocumentController::class, 'issue']);
+                Route::post('{id}/post',    [DocumentController::class, 'post']);
+                Route::post('{id}/cancel',  [DocumentController::class, 'cancel']);
+                Route::post('{id}/correct', [DocumentController::class, 'correct']);
+            });
+
+            Route::prefix('tax-codes')->group(function () {
+                Route::get('/',                 [TaxCodeController::class, 'index']);
+                Route::post('/',                [TaxCodeController::class, 'store']);
+                Route::post('install-template', [TaxCodeController::class, 'installTemplate']);
+                Route::post('calculate',        [TaxCodeController::class, 'calculate']);
+                Route::get('threshold',         [TaxCodeController::class, 'thresholdStatus']);
+                Route::get('{id}',              [TaxCodeController::class, 'show']);
+                Route::put('{id}',              [TaxCodeController::class, 'update']);
+                Route::delete('{id}',           [TaxCodeController::class, 'destroy']);
+                Route::post('{id}/approve',     [TaxCodeController::class, 'approve']);
+                Route::post('{id}/change-rate', [TaxCodeController::class, 'changeRate']);
+            });
+
+            // Defter raporları — salt okunur
+            Route::prefix('reports')->group(function () {
+                Route::get('trial-balance',          [LedgerReportController::class, 'trialBalance']);
+                Route::get('general-ledger',         [LedgerReportController::class, 'generalLedger']);
+                Route::get('journal-book',           [LedgerReportController::class, 'journalBook']);
+                Route::get('account-statement/{id}', [LedgerReportController::class, 'accountStatement']);
+            });
+
+            Route::prefix('journal-entries')->group(function () {
+                Route::get('/',                   [JournalEntryController::class, 'index']);
+                Route::post('/',                  [JournalEntryController::class, 'store']);
+                Route::get('{id}',                [JournalEntryController::class, 'show']);
+                Route::put('{id}',                [JournalEntryController::class, 'update']);
+                Route::delete('{id}',             [JournalEntryController::class, 'destroy']);
+                Route::post('{id}/check',         [JournalEntryController::class, 'check']);
+                Route::post('{id}/validate',      [JournalEntryController::class, 'validateEntry']);
+                Route::post('{id}/submit-approval', [JournalEntryController::class, 'submitApproval']);
+                Route::post('{id}/approve',       [JournalEntryController::class, 'approve']);
+                Route::post('{id}/return-draft',  [JournalEntryController::class, 'returnToDraft']);
+                Route::post('{id}/post',          [JournalEntryController::class, 'post']);
+                Route::post('{id}/reverse',       [JournalEntryController::class, 'reverse']);
+                Route::post('{id}/cancel',        [JournalEntryController::class, 'cancel']);
+            });
         });
 
         Route::prefix('packaging')->middleware('module.enabled:packaging')

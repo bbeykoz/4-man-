@@ -27,6 +27,23 @@ class CompanyResource extends JsonResource
             'max_users'       => $this->max_users,
             'max_departments' => $this->max_departments,
             'settings'        => $this->settings,
+
+            // Ülke paketi ve muhasebe kimliği
+            'country_code'            => $this->country_code,
+            'country_name'            => data_get($this->countryPack(), 'name'),
+            'functional_currency'     => $this->functionalCurrency(),
+            'timezone'                => $this->timezone,
+            'fiscal_year_start_month' => $this->fiscal_year_start_month,
+            'accounting_framework'    => $this->accounting_framework,
+            'document_locale'         => $this->documentLocale(),
+            'registration_number'     => $this->registration_number,
+            'registration_label'      => data_get($this->countryPack(), 'registration_label'),
+            'vat_number'              => $this->vat_number,
+            'vat_term'                => data_get($this->countryPack(), 'vat_term'),
+            'vat_registered'          => $this->vat_registered,
+            'vat_registered_at'       => $this->vat_registered_at?->toDateString(),
+            'reporting'               => data_get($this->countryPack(), 'reporting', []),
+
             'created_at'      => $this->created_at->toISOString(),
             'updated_at'      => $this->updated_at->toISOString(),
 

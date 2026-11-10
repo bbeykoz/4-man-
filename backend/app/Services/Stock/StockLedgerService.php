@@ -3,6 +3,7 @@
 namespace App\Services\Stock;
 
 use App\Exceptions\StockException;
+use App\Services\Accounting\InventoryOutboxService;
 use App\Models\Modules\WarehouseRecord;
 use App\Models\StockMovement;
 use App\Models\User;
@@ -23,6 +24,18 @@ use Illuminate\Support\Facades\DB;
 class StockLedgerService
 {
     private const EPSILON = 0.0005;
+
+    /**
+     * Muhasebe olay kuyruğu.
+     *
+     * Depo muhasebe tablolarına doğrudan yazmıyor; stok hareketiyle aynı
+     * transaction içinde bir olay satırı düşüyor ve fişi muhasebe tarafı
+     * sonradan üretiyor. Yayımlama hata yutuyor: muhasebe kurulumu eksik
+     * olsa bile depo çalışmaya devam etmeli.
+     */
+    public function __construct(
+        private readonly InventoryOutboxService $outbox = new InventoryOutboxService(),
+    ) {}
 
     // ─── Kayıt işleme ───────────────────────────────────────────────
 
@@ -75,6 +88,9 @@ class StockLedgerService
             ])->save();
 
             $this->syncProductStock($product);
+
+            // Muhasebeye haber ver. Aynı transaction: stok yazıldıysa olay da yazılmıştır.
+            $this->outbox->publishRecordPosted($record->fresh());
         });
     }
 
@@ -119,6 +135,8 @@ class StockLedgerService
 
             $record->forceFill(['reversed_at' => now()])->save();
             $this->syncProductStock($product);
+
+            $this->outbox->publishRecordReversed($record->fresh());
         });
     }
 

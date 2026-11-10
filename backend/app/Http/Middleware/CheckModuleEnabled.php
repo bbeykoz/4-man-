@@ -19,7 +19,11 @@ class CheckModuleEnabled
             return response()->json(['success' => false, 'message' => 'Kimlik doğrulaması gerekli.'], 401);
         }
 
-        if ($user->isSuperAdmin()) {
+        // Platform tarafı pasif departmanı da görebilmeli. Impersonation ile
+        // giren süper admin teknik olarak şirket kullanıcısıdır; isSuperAdmin()
+        // onu yakalamıyordu ve pasif modülü hiç inceleyemiyordu. Yetki token'ın
+        // sunucu tarafından verilen ability'sinden okunuyor, device_name'den değil.
+        if ($user->isSuperAdmin() || $user->actsAsPlatform()) {
             return $next($request);
         }
 

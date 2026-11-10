@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Company;
+use App\Support\CountryPack;
 use App\Models\Department;
 use App\Models\Module;
 use App\Models\Permission;
@@ -22,7 +23,11 @@ class CompanyService
 
     public function create(array $data): Company
     {
-        return DB::transaction(function () use ($data) {
+        // Para birimi, saat dilimi ve belge dili verilmediyse ülke paketinden gelir.
+        $ulke = strtoupper($data['country_code'] ?? config('country_packs.default'));
+        $pack = CountryPack::get($ulke);
+
+        return DB::transaction(function () use ($data, $ulke, $pack) {
             $company = $this->companyRepository->create([
                 'name'            => $data['name'],
                 'slug'            => $data['slug'] ?? Str::slug($data['name']),
@@ -34,6 +39,16 @@ class CompanyService
                 'max_users'       => $data['max_users'] ?? 50,
                 'max_departments' => $data['max_departments'] ?? 10,
                 'status'          => 'active',
+
+                'country_code'            => $ulke,
+                'functional_currency'     => $data['functional_currency'] ?? $pack['currency'],
+                'timezone'                => $data['timezone'] ?? $pack['timezone'],
+                'document_locale'         => $data['document_locale'] ?? $pack['document_locale'],
+                'fiscal_year_start_month' => $data['fiscal_year_start_month'] ?? $pack['fiscal_year_start'],
+                'accounting_framework'    => $data['accounting_framework'] ?? 'national',
+                'registration_number'     => $data['registration_number'] ?? null,
+                'vat_number'              => $data['vat_number'] ?? null,
+                'vat_registered'          => $data['vat_registered'] ?? false,
             ]);
 
             // Tüm aktif modülleri şirkete bağla
@@ -98,6 +113,17 @@ class CompanyService
             'plan_type'       => $data['plan_type'] ?? null,
             'max_users'       => $data['max_users'] ?? null,
             'status'          => $data['status'] ?? null,
+            // Ülke paketi ve muhasebe kimliği
+            'country_code'            => $data['country_code'] ?? null,
+            'functional_currency'     => $data['functional_currency'] ?? null,
+            'timezone'                => $data['timezone'] ?? null,
+            'fiscal_year_start_month' => $data['fiscal_year_start_month'] ?? null,
+            'accounting_framework'    => $data['accounting_framework'] ?? null,
+            'document_locale'         => $data['document_locale'] ?? null,
+            'registration_number'     => $data['registration_number'] ?? null,
+            'vat_number'              => $data['vat_number'] ?? null,
+            'vat_registered'          => $data['vat_registered'] ?? null,
+            'vat_registered_at'       => $data['vat_registered_at'] ?? null,
         ], fn($v) => $v !== null));
 
         $this->activityLogService->log(
