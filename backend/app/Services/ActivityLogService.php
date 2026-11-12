@@ -26,9 +26,14 @@ class ActivityLogService
                 ? null
                 : ($model?->company_id ?? $user?->company_id);
 
+            // Platform ekibi bir şirkete bağlıyken istek şirket sahibinin jetonuyla
+            // gidiyor; işi gerçekte yapanı ayrı sütunda tutuyoruz.
+            $impersonator = $user instanceof User ? $user->impersonatorId() : null;
+
             ActivityLog::create([
-                'company_id'  => $companyId,
-                'user_id'     => $user?->id,
+                'company_id'      => $companyId,
+                'user_id'         => $user?->id,
+                'impersonated_by' => $impersonator,
                 'action'      => $action,
                 'model_type'  => $model ? get_class($model) : null,
                 'model_id'    => $model?->getKey(),

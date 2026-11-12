@@ -105,6 +105,9 @@ class User extends Authenticatable
      */
     public const IMPERSONATION_ABILITY = 'platform:impersonation';
 
+    /** Bağlanan platform kullanıcısının kimliğini taşıyan ability öneki. */
+    public const IMPERSONATOR_ABILITY_PREFIX = 'platform:impersonator:';
+
     /**
      * İstek, platform ekibinin şirkete bağlanmış oturumundan mı geliyor?
      * tokenCan() yerine doğrudan listeye bakılır: '*' ability'si her kontrolü
@@ -116,6 +119,23 @@ class User extends Authenticatable
 
         return $token !== null
             && in_array(self::IMPERSONATION_ABILITY, (array) ($token->abilities ?? []), true);
+    }
+
+    /**
+     * Bağlanmış oturumda, asıl işi yapan platform kullanıcısının kimliği.
+     * Ability listesi sunucuda yazıldığı için istemci bunu değiştiremez.
+     */
+    public function impersonatorId(): ?string
+    {
+        $token = $this->currentAccessToken();
+
+        foreach ((array) ($token?->abilities ?? []) as $yetki) {
+            if (is_string($yetki) && str_starts_with($yetki, self::IMPERSONATOR_ABILITY_PREFIX)) {
+                return substr($yetki, strlen(self::IMPERSONATOR_ABILITY_PREFIX));
+            }
+        }
+
+        return null;
     }
 
     /** Platform ekibi adına hareket eden bir istek mi: doğrudan platform kullanıcısı ya da bağlanmış oturum. */

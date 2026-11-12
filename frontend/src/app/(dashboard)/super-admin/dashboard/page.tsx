@@ -5,6 +5,8 @@ import { Building2, Users, Boxes, Activity, TrendingUp, ShieldCheck } from 'luci
 import { PageHeader } from '@/components/common/PageHeader'
 import { StatsCard } from '@/components/common/StatsCard'
 import { ActivityTimeline } from '@/components/common/ActivityTimeline'
+import { StaffWorkloadPanel } from '@/components/platform/StaffWorkloadPanel'
+import { CompanyVolumePanel } from '@/components/platform/CompanyVolumePanel'
 import { get } from '@/lib/api'
 import type { DashboardStats } from '@/types/api.types'
 
@@ -59,6 +61,10 @@ export default function SuperAdminDashboard() {
           loading={isLoading}
         />
       </div>
+
+      {/* İki ayrı rapor: önce kendi ekibimiz, sonra şirketler */}
+      <StaffWorkloadPanel />
+      <CompanyVolumePanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Activity */}

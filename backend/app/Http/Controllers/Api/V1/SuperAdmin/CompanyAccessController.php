@@ -173,9 +173,11 @@ class CompanyAccessController extends Controller
 
         // Jetona sunucu tarafında işaretçi konur. Jeton adı istemciden gelen device_name ile
         // belirlenebildiği için ada güvenilmez; yetki kontrolleri bu ability'ye bakar.
+        // Jetonda bağlanan platform kullanıcısının kimliği de taşınır: bağlıyken
+        // yapılan işler onun iş hacmi raporuna yazılsın diye.
         $token = $owner->createToken(
             'impersonation',
-            ['*', User::IMPERSONATION_ABILITY],
+            ['*', User::IMPERSONATION_ABILITY, User::IMPERSONATOR_ABILITY_PREFIX . $request->user()->id],
             now()->addHours(2),
         )->plainTextToken;
 
