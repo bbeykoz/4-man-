@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { DashboardPanel } from '@/components/accounting/DashboardPanel'
+import { ManagerPanel } from '@/components/accounting/ManagerPanel'
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowRight, Calculator, Info, Plus, Trash2, Search, X,
-  TrendingUp, CheckCircle2, Clock, Ban, UserCircle,
+  Calculator, Info, Plus, Trash2, Search, X,
+  TrendingUp, CheckCircle2, Clock, Ban, UserCircle, ChevronDown,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -604,60 +605,79 @@ function AccountingTabSection({ departments }: AccountingTabSectionProps) {
   )
 }
 
-// ─── Marketing Tab Section ────────────────────────────────────────────────────
-
-
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Müdür ekranı iki katmandan oluşuyor:
+ *   1. Çift taraflı defterden gelen özet + bekleyen iş kuyruğu (güncel katman)
+ *   2. Eski düz `accounting_records` listesi — yalnız taşınmamış kayıt varsa
+ *
+ * İkinci katman kayıt numarası linklemesini koruduğu için silinmedi; kuyruk
+ * boşaldığında kendiliğinden ekrandan kalkıyor.
+ */
 export default function AccountingManagerPage() {
+  const [eskiAcik, setEskiAcik] = useState(false)
+
   const { data: deptData } = useQuery({
     queryKey: ['company-departments-list'],
     queryFn: () => get<any>('/company/departments').then(r => r.data ?? []),
   })
   const departments: { id: string; name: string }[] = deptData ?? []
 
+  // Eski kayıt var mı? Tek satır çekip meta.total'a bakmak yeterli.
+  const { data: eskiSayi } = useQuery({
+    queryKey: ['acct-mgr-legacy-count'],
+    queryFn: () => accountingService.list({ per_page: 1 }).then(r => r.meta?.total ?? 0),
+  })
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Muhasebe Müdürü"
-        description="Kasa, gelir-gider, alacak-borç, avans ve KDV durumu"
+        description="Kasa, gelir-gider, onay kuyruğu, dönem kapanışı ve KDV takvimi"
         breadcrumbs={[{ label: 'Modüller' }, { label: 'Muhasebe Müdürü' }]}
       />
 
-      {/*
-        Rakamlar çift taraflı defterden geliyor; aşağıdaki eski kayıt listesiyle
-        aynı kaynaktan değil. Eski liste ayrı bir katman ve taşınana kadar
-        burada duruyor.
-      */}
+      {/* Rakamlar çift taraflı defterden geliyor. */}
       <DashboardPanel />
 
-      <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-            <Calculator className="h-4 w-4" /> Eski muhasebe kayıtları
-          </h3>
-          <Link href="/modules/accounting" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400">
-            Muhasebe modülü <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
+      {/* Müdürün karar vermesi gereken işler. */}
+      <ManagerPanel />
 
-        <div className="p-5">
-          <div className="mb-4 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
-            <Info className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-              Bu liste eski düz muhasebe kayıtlarını gösterir. Çift taraflı defter, faturalar, cari hesaplar,
-              banka ve KDV için{' '}
-              <Link href="/modules/accounting" className="font-medium underline underline-offset-2">
-                Muhasebe modülünü
-              </Link>{' '}
-              kullanın. Eski kayıtlar <code className="rounded bg-blue-100 px-1 dark:bg-blue-900/50">accounting:migrate-records</code> ile belge katmanına taşınabilir.
+      {(eskiSayi ?? 0) > 0 && (
+        <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <button
+            onClick={() => setEskiAcik(v => !v)}
+            className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left"
+          >
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              <Calculator className="h-4 w-4" /> Eski muhasebe kayıtları
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                {eskiSayi} taşınmamış
+              </span>
+            </h3>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${eskiAcik ? 'rotate-180' : ''}`} />
+          </button>
+
+          {eskiAcik && (
+            <div className="border-t border-zinc-200 p-5 dark:border-zinc-800">
+              <div className="mb-4 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  Bu liste eski düz muhasebe kayıtlarını gösterir. Çift taraflı defter, faturalar, cari hesaplar,
+                  banka ve KDV için{' '}
+                  <Link href="/modules/accounting" className="font-medium underline underline-offset-2">
+                    Muhasebe modülünü
+                  </Link>{' '}
+                  kullanın. Eski kayıtlar <code className="rounded bg-blue-100 px-1 dark:bg-blue-900/50">accounting:migrate-records</code> ile belge katmanına taşınabilir.
+                </div>
+              </div>
+
+              <AccountingTabSection departments={departments} />
             </div>
-          </div>
-
-          <AccountingTabSection departments={departments} />
+          )}
         </div>
-      </div>
+      )}
     </div>
   )
 }
