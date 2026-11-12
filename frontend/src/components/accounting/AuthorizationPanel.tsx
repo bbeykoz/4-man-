@@ -52,7 +52,7 @@ function Roller() {
   return (
     <Section
       title="Muhasebe rolleri"
-      description={`${roller.length} rol`}
+      description={`${roller.length} rol · izinler Şirket → Roller ekranından düzenlenebilir`}
       action={
         <button onClick={() => kur.mutate()} disabled={kur.isPending}
           className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
@@ -61,7 +61,11 @@ function Roller() {
       }
     >
       {roller.length === 0 ? (
-        <Notice tone="info">Muhasebe rolü tanımlı değil. Şablonları kurarak başlayabilirsiniz.</Notice>
+        <Notice tone="info">
+          Muhasebe rolü tanımlı değil. Şablonları kurunca iki rol gelir — Muhasebe Personeli ve
+          Muhasebe Müdürü. İzinleri şirketinize göre değiştirebilir, farklı bir yapı gerekiyorsa
+          Şirket → Roller ekranından kendi rolünüzü açabilirsiniz.
+        </Notice>
       ) : (
         <Table
           head={<tr><Th>Rol</Th><Th>Açıklama</Th><Th className="w-24" align="center">Kullanıcı</Th><Th className="w-28" align="center">İzin</Th></tr>}

@@ -15,7 +15,8 @@ class InstallAccountingPermissions extends Command
 {
     protected $signature = 'accounting:install-permissions
                             {--company= : Yalnız bu şirkete rol şablonlarını kur}
-                            {--roles : Rol şablonlarını da kur}';
+                            {--roles : Rol şablonlarını da kur}
+                            {--prune : Kaldırılan eski şablon rollerini sil (yalnız kimseye atanmamışsa)}';
 
     protected $description = 'Muhasebe izinlerini ve rol şablonlarını kurar';
 
@@ -41,6 +42,18 @@ class InstallAccountingPermissions extends Command
 
             $this->line(sprintf('  <info>%s</info>: %d rol eklendi, %d atlandı',
                 $sirket->name, $sonuc['created'], $sonuc['skipped']));
+
+            if ($this->option('prune')) {
+                $temizlik = $servis->pruneRetiredTemplates($sirket);
+
+                if ($temizlik['deleted']) {
+                    $this->line('    silindi: ' . implode(', ', $temizlik['deleted']));
+                }
+
+                foreach ($temizlik['kept'] as $ad) {
+                    $this->warn("    \"$ad\" rolünde kullanıcı var, silinmedi. Kullanıcıları taşıyıp tekrar çalıştırın.");
+                }
+            }
         }
 
         return self::SUCCESS;

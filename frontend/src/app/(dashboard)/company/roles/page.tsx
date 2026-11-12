@@ -383,6 +383,12 @@ export default function RolesPage() {
     setEPerms(role.permissions ?? [])
   }
 
+  /**
+   * Modul rol sablonlari. Sistem rolleri gibi hazir gelirler ama kilitli
+   * degildirler: izinleri sirkete gore degistirilebilir.
+   */
+  const MODUL_SABLONLARI = ['warehouse-staff', 'warehouse-manager', 'accounting-staff', 'accounting-manager']
+
   const columns = [
     col.accessor('display_name', {
       header: 'Rol',
@@ -409,6 +415,11 @@ export default function RolesPage() {
               {r.is_system && r.slug !== 'company-owner' && (
                 <p className="mt-0.5 text-xs text-amber-500 dark:text-amber-400 font-medium">
                   ⚠ Örnek roldür — kullanıcılara verilemez
+                </p>
+              )}
+              {MODUL_SABLONLARI.includes(r.name) && (
+                <p className="mt-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                  Sabit örnek rol — izinleri ayarlanabilir
                 </p>
               )}
             </div>
@@ -494,11 +505,21 @@ export default function RolesPage() {
 
       <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 text-blue-800 dark:text-blue-300">
         <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
-        <p className="text-sm leading-relaxed">
-          <span className="font-semibold">Sistem rolleri (Şirket Sahibi, Departman Müdürü, Personel, İzleyici)</span> sabit örnek rollerdir — izinleri düzenlenemez.
-          Şirketinize özel roller oluşturmak için{' '}
-          <span className="font-semibold">"+ Yeni Rol"</span> butonunu kullanın; departman ve yetkileri kendiniz belirleyin.
-        </p>
+        <div className="space-y-1.5 text-sm leading-relaxed">
+          <p>
+            <span className="font-semibold">Sistem rolleri (Şirket Sahibi, Departman Müdürü, Personel, İzleyici)</span>{' '}
+            sabit örnek rollerdir — izinleri düzenlenemez.
+          </p>
+          <p>
+            <span className="font-semibold">Modül rolleri (Depo Sorumlusu, Depo Müdürü, Muhasebe Müdürü, Muhasebe Personeli)</span>{' '}
+            da sabit örnek rollerdir, ancak <span className="font-semibold">ayarlanabilir</span>: izinlerini
+            şirketinizin işleyişine göre değiştirebilirsiniz.
+          </p>
+          <p>
+            İstisna durumlar için yukarıdaki <span className="font-semibold">"+ Yeni Rol"</span> butonundan
+            kendi rolünüzü ve yetkilendirmenizi oluşturabilirsiniz.
+          </p>
+        </div>
       </div>
 
       <DataTable
@@ -513,6 +534,12 @@ export default function RolesPage() {
         isLoading={isLoading}
         emptyMessage="Henüz rol tanımlanmamış."
       />
+
+      <p className="px-1 text-xs text-zinc-500 dark:text-zinc-400">
+        Yukarıdaki roller sabit örnek rollerdir. Modül rollerinin izinleri düzenlenebilir;
+        işleyişiniz bu kalıplara uymuyorsa <span className="font-medium">&quot;+ Yeni Rol&quot;</span> ile
+        kendi rolünüzü ve yetkilerinizi tanımlayın.
+      </p>
 
       <ConfirmModal
         open={!!deleteId}

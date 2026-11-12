@@ -73,68 +73,42 @@ return [
      * Şablon; şirket kendi rollerini düzenleyebilir. level alanı mevcut
      * hiyerarşiyle uyumlu: 3 = departman müdürü, 4 = personel.
      */
+    /**
+     * Rol şablonları.
+     *
+     * Yalnız iki rol var: muhasebe personeli ve muhasebe müdürü. Kasa
+     * operatörü, denetçi, finans yöneticisi gibi ara roller kaldırıldı —
+     * izinler buradan sabitlenmiyor, şirket sahibi kendi yapısına göre
+     * Şirket → Roller ekranından ayarlıyor. Bu şablonlar yalnız makul bir
+     * başlangıç verir; is_system false olduğu için her ikisi de düzenlenebilir
+     * ve istisnası olan şirket kendi rolünü ayrıca açar.
+     */
     'role_templates' => [
-        'accounting-clerk' => [
-            'display_name' => 'Muhasebe Uzmanı',
+        'accounting-staff' => [
+            'display_name' => 'Muhasebe Personeli',
             'level'        => 4,
             'color'        => 'blue',
-            'description'  => 'Belge işler, fiş taslağı hazırlar, mutabakat yapar. Onay ve dönem kapama yetkisi yok.',
+            'description'  => 'Günlük muhasebe işi: belge işler, fiş taslağı hazırlar, tahsilat alır, '
+                . 'kasa sayar, mutabakat yapar. Onay ve dönem kapama yetkisi başlangıçta yok.',
             'permissions'  => [
                 'accounting.chart.view', 'accounting.period.view',
                 'accounting.journal.view', 'accounting.journal.create',
                 'accounting.document.view', 'accounting.document.create', 'accounting.document.issue',
                 'accounting.partner.view', 'accounting.partner.manage',
                 'accounting.bank.view', 'accounting.payment.create',
-                'accounting.statement.import',
+                'accounting.cash.count', 'accounting.statement.import',
                 'accounting.tax.view', 'accounting.vat.view',
                 'accounting.report.view', 'accounting.inventory.view',
             ],
         ],
 
-        'chief-accountant' => [
-            'display_name' => 'Baş Muhasebeci',
+        'accounting-manager' => [
+            'display_name' => 'Muhasebe Müdürü',
             'level'        => 3,
             'color'        => 'indigo',
-            'description'  => 'Dönem kapatır, vergi kodu onaylar, fiş ve beyan onaylar.',
+            'description'  => 'Fiş, ödeme ve beyan onaylar; dönem kapatır, vergi kodu onaylar, '
+                . 'tüm muhasebe ekranlarını görür.',
             'permissions'  => '*',   // muhasebe izinlerinin tamamı
-        ],
-
-        'cash-operator' => [
-            'display_name' => 'Kasa / POS Operatörü',
-            'level'        => 4,
-            'color'        => 'amber',
-            'description'  => 'Tahsilat alır, kasa sayar. Hesap planına ve fişe erişimi yok.',
-            'permissions'  => [
-                'accounting.bank.view', 'accounting.payment.create',
-                'accounting.cash.count', 'accounting.partner.view',
-                'accounting.document.view', 'accounting.document.create',
-            ],
-        ],
-
-        'accounting-auditor' => [
-            'display_name' => 'Denetçi',
-            'level'        => 4,
-            'color'        => 'zinc',
-            'description'  => 'Salt okunur: kayıt, belge, değişiklik geçmişi ve raporlar.',
-            'permissions'  => [
-                'accounting.chart.view', 'accounting.period.view', 'accounting.journal.view',
-                'accounting.document.view', 'accounting.partner.view', 'accounting.bank.view',
-                'accounting.tax.view', 'accounting.vat.view', 'accounting.report.view',
-                'accounting.audit.view', 'accounting.inventory.view',
-            ],
-        ],
-
-        'finance-manager' => [
-            'display_name' => 'Finans Yöneticisi',
-            'level'        => 3,
-            'color'        => 'emerald',
-            'description'  => 'Ödeme onaylar ve raporları görür; belge hazırlamaz.',
-            'permissions'  => [
-                'accounting.report.view', 'accounting.journal.view', 'accounting.document.view',
-                'accounting.partner.view', 'accounting.bank.view',
-                'accounting.payment.approve', 'accounting.payment.post',
-                'accounting.vat.view', 'accounting.audit.view',
-            ],
         ],
     ],
 

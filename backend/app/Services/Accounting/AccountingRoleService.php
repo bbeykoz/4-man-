@@ -17,6 +17,15 @@ use Illuminate\Support\Str;
  */
 class AccountingRoleService
 {
+    /**
+     * Bir zamanlar kurulmuş, artık şablonda olmayan rol adları. Temizlik
+     * yalnız bu listeyle sınırlı; şirketin kendi rolleri kapsam dışı.
+     */
+    private const EMEKLI_SABLONLAR = [
+        'accounting-clerk', 'chief-accountant', 'cash-operator',
+        'accounting-auditor', 'finance-manager',
+    ];
+
     public function __construct(private readonly AuditService $audit) {}
 
     private function config(): array
@@ -116,6 +125,48 @@ class AccountingRoleService
         }
 
         return ['created' => count($olusan), 'skipped' => $atlanan, 'roles' => $olusan];
+    }
+
+    /**
+     * Kaldırılan şablon rolleri temizler.
+     *
+     * Yalnız bu servisin kurduğu eski şablonlara dokunur ve yalnız kimseye
+     * atanmamışsa siler. Şirketin kendi açtığı özel roller ile kullanıcısı
+     * olan roller hiçbir koşulda silinmez — atanmış rolü silmek kullanıcıyı
+     * sessizce yetkisiz bırakırdı.
+     *
+     * @return array{deleted: array<string>, kept: array<string>}
+     */
+    public function pruneRetiredTemplates(Company $company): array
+    {
+        $gecerli = array_keys($this->config()['role_templates']);
+        $silinen = [];
+        $korunan = [];
+
+        $roller = Role::where('company_id', $company->id)
+            ->whereIn('name', self::EMEKLI_SABLONLAR)
+            ->whereNotIn('name', $gecerli)
+            ->get();
+
+        foreach ($roller as $rol) {
+            if ($rol->users()->count() > 0) {
+                $korunan[] = $rol->display_name;
+                continue;
+            }
+
+            $rol->permissions()->detach();
+            $rol->delete();
+            $silinen[] = $rol->display_name;
+        }
+
+        if ($silinen) {
+            $this->audit->log(
+                companyId: $company->id, action: 'accounting_roles.pruned',
+                entityType: 'Role', payload: ['deleted' => $silinen, 'kept' => $korunan],
+            );
+        }
+
+        return ['deleted' => $silinen, 'kept' => $korunan];
     }
 
     /** Şirketin muhasebe rolleri ve izin sayıları. */

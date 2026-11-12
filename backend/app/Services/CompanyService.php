@@ -61,6 +61,10 @@ class CompanyService
             // Şirket için varsayılan roller oluştur
             $this->createDefaultRoles($company);
 
+            // Depo ve muhasebe sablonlari: hazir gelir, izinleri sirket duzenler.
+            app(\App\Services\Warehouse\WarehouseRoleService::class)->installRoleTemplates($company);
+            app(\App\Services\Accounting\AccountingRoleService::class)->installRoleTemplates($company);
+
             // Şirket için varsayılan departmanları oluştur
             $this->createDefaultDepartments($company);
 
