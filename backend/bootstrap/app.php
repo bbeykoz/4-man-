@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'company.access' => \App\Http\Middleware\CheckCompanyAccess::class,
             'module.enabled' => \App\Http\Middleware\CheckModuleEnabled::class,
             'log.api'        => \App\Http\Middleware\LogApiRequest::class,
+            'incident.record'=> \App\Http\Middleware\RecordIncident::class,
         ]);
 
         $middleware->throttleApi('60,1');
@@ -45,6 +46,10 @@ return Application::configure(basePath: dirname(__DIR__))
                     $code    = 'NOT_FOUND';
                     $message = 'Kayıt bulunamadı.';
                 } elseif ($e instanceof \Illuminate\Validation\ValidationException) {
+                    // Hatalı form da platform olay kaydına düşer: şirketin nerede
+                    // takıldığını görmeden sorunu çözemiyoruz.
+                    app(\App\Services\Platform\IncidentRecorder::class)->record($e, $request, 422);
+
                     return response()->json([
                         'success' => false,
                         'message' => 'Girilen veriler geçersiz.',
@@ -55,6 +60,10 @@ return Application::configure(basePath: dirname(__DIR__))
                     $status  = $e->getStatusCode();
                     $message = $e->getMessage() ?: $message;
                 }
+
+                // Şirkette oluşan hata platform panelindeki olay kaydına yazılır.
+                // Şirketin kendi aktivite logu bundan etkilenmez.
+                app(\App\Services\Platform\IncidentRecorder::class)->record($e, $request, $status);
 
                 return response()->json([
                     'success' => false,

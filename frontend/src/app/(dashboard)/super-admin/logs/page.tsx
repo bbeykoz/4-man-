@@ -7,12 +7,17 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { DataTable } from '@/components/common/DataTable'
 import { FilterBar } from '@/components/common/FilterBar'
 import { get } from '@/lib/api'
-import { formatDateTime, timeAgo } from '@/lib/utils'
+import { cn, formatDateTime, timeAgo } from '@/lib/utils'
+import { IncidentsPanel } from '@/components/platform/IncidentsPanel'
 import type { ActivityLog } from '@/types/api.types'
+
+type Sekme = 'olaylar' | 'aktivite'
 
 const col = createColumnHelper<ActivityLog & { company?: { name: string } }>()
 
 export default function SuperAdminLogsPage() {
+  // Varsayilan sekme olaylar: sirketlerde takilan isi gormek icin aciliyor.
+  const [sekme, setSekme] = useState<Sekme>('olaylar')
   const [page, setPage] = useState(0)
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Record<string, string>>({})
@@ -28,6 +33,7 @@ export default function SuperAdminLogsPage() {
       })
       return get<any>(`/admin/logs?${params}`)
     },
+    enabled: sekme === 'aktivite',
   })
 
   const columns = [
@@ -91,10 +97,31 @@ export default function SuperAdminLogsPage() {
     <div className="space-y-5">
       <PageHeader
         title="Sistem Logları"
-        description="Tüm şirketlere ait aktivite logları"
+        description="Şirketlerde oluşan hatalar ve tüm şirketlere ait aktivite logları"
         breadcrumbs={[{ label: 'Süper Admin' }, { label: 'Loglar' }]}
       />
 
+      <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
+        {([['olaylar', 'Hatalar ve sorunlar'], ['aktivite', 'Aktivite logu']] as [Sekme, string][]).map(([id, etiket]) => (
+          <button
+            key={id}
+            onClick={() => setSekme(id)}
+            className={cn(
+              '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
+              sekme === id
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200',
+            )}
+          >
+            {etiket}
+          </button>
+        ))}
+      </div>
+
+      {sekme === 'olaylar' && <IncidentsPanel />}
+
+      {sekme === 'aktivite' && (
+      <>
       <FilterBar
         placeholder="İşlem tipinde ara..."
         onSearch={setSearch}
@@ -117,6 +144,8 @@ export default function SuperAdminLogsPage() {
         isLoading={isLoading}
         emptyMessage="Log kaydı bulunamadı."
       />
+      </>
+      )}
     </div>
   )
 }
