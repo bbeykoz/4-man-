@@ -23,6 +23,18 @@ interface DataTableProps<TData> {
   emptyMessage?: string
   /** Hücreler arasına dikey çizgi koyar; sütunu çok olan listelerde okumayı kolaylaştırır. */
   bordered?: boolean
+  /**
+   * Satır arka planı. Dönen sınıf kendi hover rengini de taşımalı; taşımazsa
+   * varsayılan hover rengi satır rengini ezer.
+   */
+  rowClassName?: (row: TData, index: number) => string
+  /**
+   * Satirin solundaki renk seridi. Satir elemanina degil ilk hucreye uygulanir:
+   * border-collapse acikken <tr> uzerindeki kenarlik her tarayicida cizilmiyor.
+   */
+  rowAccent?: (row: TData, index: number) => string | undefined
+  /** Hücre içeriğinin dikey hizası. Çok satırlı hücre varsa 'middle' daha dengeli durur. */
+  align?: 'top' | 'middle'
 }
 
 export function DataTable<TData>({
@@ -35,6 +47,9 @@ export function DataTable<TData>({
   isLoading,
   emptyMessage = 'Kayıt bulunamadı.',
   bordered = false,
+  rowClassName,
+  rowAccent,
+  align = 'middle',
 }: DataTableProps<TData>) {
   // Izgara görünümü: başlık ve hücrelerde sağ kenar çizgisi (son sütun hariç)
   const hucreCizgi = bordered
@@ -121,10 +136,18 @@ export function DataTable<TData>({
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.22, delay: Math.min(index, 12) * 0.02, ease: 'easeOut' }}
-                    className="hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors"
+                    className={cn(
+                      'transition-colors',
+                      rowClassName?.(row.original, index) ?? 'hover:bg-zinc-50 dark:hover:bg-zinc-900/40',
+                    )}
                   >
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className={cn('px-4 py-3 text-zinc-700 dark:text-zinc-300 align-top', hucreCizgi)}>
+                    {row.getVisibleCells().map((cell, cellIndex) => (
+                      <td key={cell.id} className={cn(
+                        'px-4 py-3 text-zinc-700 dark:text-zinc-300',
+                        align === 'middle' ? 'align-middle' : 'align-top',
+                        hucreCizgi,
+                        cellIndex === 0 && rowAccent?.(row.original, index),
+                      )}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}

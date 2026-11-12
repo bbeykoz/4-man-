@@ -106,7 +106,9 @@ interface Props {
 
 export function RecordFilters({ onApply, total, personel = [] }: Props) {
   const { data: depolar = [] } = useWarehouses()
-  const [acik, setAcik] = useState(false)
+  // Panel her acilista acik gelir; kullanici isterse o sayfada kapatabilir.
+  const [acik, setAcik] = useState(true)
+  const degistir = () => setAcik(v => !v)
   const [f, setF] = useState<RecordFilterValues>(bosFiltre)
   const [uygulanan, setUygulanan] = useState(0)
 
@@ -131,7 +133,7 @@ export function RecordFilters({ onApply, total, personel = [] }: Props) {
     >
       <button
         type="button"
-        onClick={() => setAcik(v => !v)}
+        onClick={degistir}
         className="flex w-full items-center gap-2 px-4 py-3 text-left"
       >
         <Filter className="h-4 w-4 text-zinc-400" />

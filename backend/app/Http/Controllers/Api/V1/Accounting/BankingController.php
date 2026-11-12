@@ -315,7 +315,18 @@ class BankingController extends Controller
             ->orderBy('booking_date')
             ->paginate($request->integer('per_page', 50));
 
-        return response()->json(['success' => true, 'data' => BankTransactionResource::collection($satirlar)]);
+        // Resource koleksiyonu response()->json() icinde meta'sini kaybediyor;
+        // toplam satir sayisini ayri alanda veriyoruz.
+        return response()->json([
+            'success' => true,
+            'data'    => BankTransactionResource::collection($satirlar),
+            'meta'    => [
+                'total'        => $satirlar->total(),
+                'per_page'     => $satirlar->perPage(),
+                'current_page' => $satirlar->currentPage(),
+                'last_page'    => $satirlar->lastPage(),
+            ],
+        ]);
     }
 
     // ─── Eşleştirme ─────────────────────────────────────────────────

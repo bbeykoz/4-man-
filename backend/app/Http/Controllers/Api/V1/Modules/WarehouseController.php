@@ -192,6 +192,37 @@ class WarehouseController extends BaseModuleController
         }
     }
 
+    /**
+     * Depo ozetine stok tarafindaki rakamlari ekler: giren/cikan miktar,
+     * onay bekleyen ve stoga islenmemis kayit sayisi.
+     */
+    protected function summaryExtras(Request $request): array
+    {
+        $giris = ['stock_in', 'return_in'];
+        $cikis = ['stock_out', 'damage'];
+
+        $miktar = fn (array $tipler) => (float) (clone $this->filtrelenmisSorgu($request))
+            ->whereIn('type', $tipler)
+            ->sum('quantity');
+
+        $girenMiktar = $miktar($giris);
+        $cikanMiktar = $miktar($cikis);
+
+        return [
+            'quantity_in'  => $girenMiktar,
+            'quantity_out' => $cikanMiktar,
+            'quantity_net' => round($girenMiktar - $cikanMiktar, 3),
+            'pending'      => (clone $this->filtrelenmisSorgu($request))
+                ->whereIn('status', ['pending', 'in_progress'])->count(),
+            'unposted'     => (clone $this->filtrelenmisSorgu($request))
+                ->where(fn ($q) => $q->whereNull('posted_at')->orWhereNotNull('reversed_at'))
+                ->whereNotIn('status', ['cancelled'])
+                ->count(),
+            'qc_pending'   => (clone $this->filtrelenmisSorgu($request))
+                ->where('qc_status', 'pending')->count(),
+        ];
+    }
+
     /** QC alanları sadece kalite kontrol akışıyla, stok alanları sadece işlenmemiş kayıtta değişir. */
     public function update(Request $request, string $id): JsonResponse
     {
@@ -525,6 +556,30 @@ class WarehouseController extends BaseModuleController
     }
 
     /**
+     * Imza ekranindaki personel listesi. Yalniz ad, unvan ve departman doner;
+     * kim imzaladigi serbest metin yerine bu listeden secilir.
+     */
+    public function signers(Request $request): JsonResponse
+    {
+        abort_unless($this->can($request->user(), $this->viewPermission), 403);
+
+        $personel = \App\Models\User::where('company_id', $request->user()->company_id)
+            ->where('status', 'active')
+            ->with('department:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'title', 'department_id']);
+
+        return response()->json(['success' => true, 'data' => $personel->map(fn ($u) => [
+            'id'         => $u->id,
+            'name'       => $u->name,
+            'title'      => $u->title,
+            'department' => $u->department?->name,
+            // Herkes yalniz kendi adina imzalar; secilebilirligi istemci de buna gore kisitlar.
+            'is_self'    => $u->id === $request->user()->id,
+        ])]);
+    }
+
+    /**
      * Teslim imzası: kaydı teslim alan kişi ekranda imzalar, PNG olarak saklanır.
      * İmza bir kez atılır; değiştirmek için önce silinmesi gerekir.
      */
@@ -542,11 +597,20 @@ class WarehouseController extends BaseModuleController
 
         $data = $request->validate([
             'signature' => ['required', 'string', 'max:2000000'],
-            'name'      => ['required', 'string', 'max:120'],
+            'signed_by' => ['nullable', 'uuid'],
         ], [
             'signature.required' => 'İmza boş olamaz.',
-            'name.required'      => 'Teslim alan kişinin adı zorunlu.',
         ]);
+
+        // Imza kisiye baglidir: herkes yalniz kendi adina imzalar. Istemci de
+        // listede baskasini sectirmez, burada sunucu tarafinda da kapatiyoruz.
+        if (! empty($data['signed_by']) && $data['signed_by'] !== $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Yalnızca kendi adınıza imza atabilirsiniz.',
+                'errors'  => ['signed_by' => ['Yalnızca kendi adınıza imza atabilirsiniz.']],
+            ], 422);
+        }
 
         $record = WarehouseRecord::where('company_id', $user->company_id)->findOrFail($id);
 
@@ -581,7 +645,8 @@ class WarehouseController extends BaseModuleController
             $record->update([
                 'signature_path' => $path,
                 'signature_disk' => self::QC_DISK,
-                'signed_by_name' => $data['name'],
+                // Ad serbest metinden degil hesaptan gelir; imza ile hesap ayni kisi olur.
+                'signed_by_name' => $user->name,
                 'signed_by'      => $user->id,
                 'signed_at'      => now(),
                 'updated_by'     => $user->id,

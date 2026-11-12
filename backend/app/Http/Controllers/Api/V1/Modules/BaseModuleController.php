@@ -56,8 +56,31 @@ abstract class BaseModuleController extends Controller
     {
         abort_unless($this->can($request->user(), $this->viewPermission), 403);
 
-        $query = $this->getModelClass()::where('company_id', $request->user()->company_id)
-            ->withCount(['comments', 'attachments']);
+        $query = $this->filtrelenmisSorgu($request)->withCount(['comments', 'attachments']);
+
+        $records = $query->with(['createdBy', 'department', ...$this->indexWith])
+            ->orderBy($request->input('sort_by', 'created_at'), $request->input('sort_dir', 'desc'))
+            ->paginate($request->integer('per_page', 15));
+
+        return response()->json([
+            'success' => true,
+            'data'    => RecordResource::collection($records->items()),
+            'meta'    => [
+                'current_page' => $records->currentPage(),
+                'per_page'     => $records->perPage(),
+                'total'        => $records->total(),
+                'last_page'    => $records->lastPage(),
+            ],
+        ]);
+    }
+
+    /**
+     * Liste ve ozet ayni suzgecleri kullanir; ikisi ayri yazilirsa ozet
+     * listeden farkli bir kumeyi ozetler.
+     */
+    protected function filtrelenmisSorgu(Request $request)
+    {
+        $query = $this->getModelClass()::where('company_id', $request->user()->company_id);
 
         // Filters
         if ($search = $request->input('search')) {
@@ -92,20 +115,49 @@ abstract class BaseModuleController extends Controller
 
         $this->applyModuleFilters($query, $request);
 
-        $records = $query->with(['createdBy', 'department', ...$this->indexWith])
-            ->orderBy($request->input('sort_by', 'created_at'), $request->input('sort_dir', 'desc'))
-            ->paginate($request->integer('per_page', 15));
+        return $query;
+    }
 
-        return response()->json([
-            'success' => true,
-            'data'    => RecordResource::collection($records->items()),
-            'meta'    => [
-                'current_page' => $records->currentPage(),
-                'per_page'     => $records->perPage(),
-                'total'        => $records->total(),
-                'last_page'    => $records->lastPage(),
-            ],
-        ]);
+    /**
+     * Listenin ustundeki ozet penceresi. Sayfalama disinda ayni suzgecleri
+     * uygular, yani gosterilen 15 satiri degil tum sonuc kumesini ozetler.
+     */
+    public function summary(Request $request): JsonResponse
+    {
+        abort_unless($this->can($request->user(), $this->viewPermission), 403);
+
+        $tablo    = (new ($this->getModelClass()))->getTable();
+        $miktarVar = \Illuminate\Support\Facades\Schema::hasColumn($tablo, 'quantity');
+
+        $turler = (clone $this->filtrelenmisSorgu($request))
+            ->selectRaw('type, count(*) as adet' . ($miktarVar ? ', coalesce(sum(quantity), 0) as miktar' : ''))
+            ->groupBy('type')
+            ->get()
+            ->map(fn ($r) => [
+                'type'     => $r->type,
+                'count'    => (int) $r->adet,
+                'quantity' => $miktarVar ? (float) $r->miktar : null,
+            ])
+            ->values();
+
+        $durumlar = (clone $this->filtrelenmisSorgu($request))
+            ->selectRaw('status, count(*) as adet')
+            ->groupBy('status')
+            ->get()
+            ->map(fn ($r) => ['status' => $r->status, 'count' => (int) $r->adet])
+            ->values();
+
+        return response()->json(['success' => true, 'data' => array_merge([
+            'total'     => (clone $this->filtrelenmisSorgu($request))->count(),
+            'by_type'   => $turler,
+            'by_status' => $durumlar,
+        ], $this->summaryExtras($request))]);
+    }
+
+    /** Module ozgu ozet alanlari; alt siniflar gecersiz kilar. */
+    protected function summaryExtras(Request $request): array
+    {
+        return [];
     }
 
     public function store(CreateRecordRequest $request): JsonResponse

@@ -4,13 +4,35 @@
 // Fark: next-themes yerine projenin .dark sınıfı okunur; imza sunucuya PNG olarak gönderilir.
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, PenLine, RotateCcw, X } from 'lucide-react'
 import { toast } from 'sonner'
 import useMeasure from 'react-use-measure'
-import { api, post } from '@/lib/api'
+import { api, get, post } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/store/auth.store'
 import { apiErrorMessage } from './stock'
+
+interface Signer {
+  id: string
+  name: string
+  title: string | null
+  department: string | null
+  is_self: boolean
+}
+
+/**
+ * Imza atabilecek personel. Liste sirkettin aktif personelini gosterir ama
+ * secilebilir tek satir kullanicinin kendisidir: imza kisiye bagli bir
+ * belgedir, baskasi adina atilamaz. Sunucu da ayni kurali uyguluyor.
+ */
+function useSigners(modulePath: string) {
+  return useQuery({
+    queryKey: ['signers', modulePath],
+    queryFn: () => get<{ data: Signer[] }>(`/modules/${modulePath}/signers`).then(r => r.data),
+    staleTime: 5 * 60_000,
+  })
+}
 
 type Step = 'idle' | 'drawing' | 'done'
 
@@ -35,8 +57,12 @@ export function SignaturePad({
   className,
 }: SignaturePadProps) {
   const [step, setStep] = useState<Step>(hasSignature ? 'done' : 'idle')
-  const [name, setName] = useState('')
   const [drawn, setDrawn] = useState(false)
+  const { user } = useAuthStore()
+  const { data: signers = [], isLoading: signersLoading } = useSigners(modulePath)
+  // Listede kendi satiri; liste gelmemisse oturumdaki hesap.
+  const kendisi = signers.find(s => s.is_self)
+  const imzalayanAd = kendisi?.name ?? user?.name ?? ''
   const [ref, bounds] = useMeasure({ offsetSize: true })
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawing = useRef(false)
@@ -98,7 +124,7 @@ export function SignaturePad({
     mutationFn: () =>
       post(`/modules/${modulePath}/${recordId}/signature`, {
         signature: canvasRef.current?.toDataURL('image/png'),
-        name: name.trim(),
+        signed_by: kendisi?.id ?? user?.id,
       }),
     onSuccess: () => {
       toast.success('İmza kaydedildi.')
@@ -108,7 +134,7 @@ export function SignaturePad({
     onError: (e) => toast.error(apiErrorMessage(e, 'İmza kaydedilemedi.')),
   })
 
-  const canSave = drawn && name.trim().length >= 2 && !saveMutation.isPending
+  const canSave = drawn && !!imzalayanAd && !saveMutation.isPending
 
   return (
     <MotionConfig transition={{ type: 'spring', bounce: 0.15, duration: 0.7 }}>
@@ -181,12 +207,31 @@ export function SignaturePad({
                   className="h-[150px] w-full touch-none rounded-xl border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800"
                 />
 
-                <input
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="Teslim alan kişinin adı"
-                  className="mt-3 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-blue-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-                />
+                <label className="mt-3 block">
+                  <span className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                    Teslim alan personel
+                  </span>
+                  <select
+                    value={kendisi?.id ?? user?.id ?? ''}
+                    onChange={() => { /* yalniz kendi hesabi secilebilir */ }}
+                    disabled={signersLoading}
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-blue-600 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                  >
+                    {signers.length === 0 && (
+                      <option value={user?.id ?? ''}>{imzalayanAd || 'Yükleniyor…'}</option>
+                    )}
+                    {signers.map(s => (
+                      <option key={s.id} value={s.id} disabled={!s.is_self}>
+                        {s.name}
+                        {s.department ? ` · ${s.department}` : ''}
+                        {s.is_self ? ' (siz)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="mt-1 block text-[11px] text-zinc-400">
+                    İmza hesabınıza bağlanır; yalnızca kendi adınıza imzalayabilirsiniz.
+                  </span>
+                </label>
 
                 <motion.button
                   type="button"
@@ -216,7 +261,7 @@ export function SignaturePad({
                   <CheckCircle2 className="h-4 w-4" />
                 </motion.div>
                 <motion.span layoutId={`signature-text-${recordId}`}>
-                  {signedByName || name ? `İmzaladı: ${signedByName || name}` : 'İmzalandı'}
+                  {signedByName || imzalayanAd ? `İmzaladı: ${signedByName || imzalayanAd}` : 'İmzalandı'}
                   {signedAt && <span className="ml-1 opacity-80">· {new Date(signedAt).toLocaleDateString('tr-TR')}</span>}
                 </motion.span>
               </motion.div>

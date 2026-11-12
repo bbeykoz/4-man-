@@ -88,6 +88,69 @@ export const RECORD_TYPES = [
   { value: 'inspection',  label: 'Denetim' },
 ]
 
+/**
+ * Kayit listesinde satir rengi.
+ *
+ * Iki katman var ve isleri farkli:
+ *   - Zemin cok soluk kalir (%5-7). Daha koyu olursa TUR rozetinin kendi zemini
+ *     satir zeminine karisiyor, rozet okunmaz oluyordu.
+ *   - Sol 3px serit tam doygun renk tasir; tipi ayirt eden asil isaret bu.
+ *
+ * Renk tek basina anlam tasimaz: TUR sutunu ayni bilgiyi yazili veriyor.
+ * Sinif adlari tam yazilmali; Tailwind string birlestirmeyi taramaz.
+ */
+export const RECORD_ROW_TINT: Record<string, string> = {
+  stock_in:    'bg-emerald-500/[0.05] hover:bg-emerald-500/[0.10] dark:bg-emerald-400/[0.06] dark:hover:bg-emerald-400/[0.12]',
+  return_in:   'bg-cyan-500/[0.06] hover:bg-cyan-500/[0.11] dark:bg-cyan-400/[0.07] dark:hover:bg-cyan-400/[0.13]',
+  stock_out:   'bg-red-500/[0.05] hover:bg-red-500/[0.10] dark:bg-red-400/[0.06] dark:hover:bg-red-400/[0.12]',
+  damage:      'bg-orange-500/[0.06] hover:bg-orange-500/[0.11] dark:bg-orange-400/[0.07] dark:hover:bg-orange-400/[0.13]',
+  transfer:    'bg-blue-500/[0.05] hover:bg-blue-500/[0.10] dark:bg-blue-400/[0.06] dark:hover:bg-blue-400/[0.12]',
+  adjustment:  'bg-yellow-500/[0.07] hover:bg-yellow-500/[0.12] dark:bg-yellow-400/[0.07] dark:hover:bg-yellow-400/[0.13]',
+  stock_count: 'bg-fuchsia-500/[0.05] hover:bg-fuchsia-500/[0.10] dark:bg-fuchsia-400/[0.06] dark:hover:bg-fuchsia-400/[0.12]',
+  inspection:  'bg-stone-500/[0.06] hover:bg-stone-500/[0.11] dark:bg-stone-400/[0.06] dark:hover:bg-stone-400/[0.12]',
+}
+
+/**
+ * Serit renkleri. Tonlar OKLab uzayinda olculerek secildi; normal goruste en
+ * yakin cift ΔE 14.6, kirmizi-yesil korlugunde 5.5-5.8 (tam ayrim 8 renkte
+ * mumkun degil, bu yuzden TUR sutunu rengi ayrica yaziyor).
+ * Onceki mor/lacivert cifti renk korlugunde ΔE 0.7 ile ayirt edilemiyordu.
+ */
+export const RECORD_ROW_ACCENT: Record<string, string> = {
+  stock_in:    'shadow-[inset_3px_0_0_#10b981]',
+  return_in:   'shadow-[inset_3px_0_0_#22d3ee]',
+  stock_out:   'shadow-[inset_3px_0_0_#ef4444]',
+  damage:      'shadow-[inset_3px_0_0_#fb923c]',
+  transfer:    'shadow-[inset_3px_0_0_#2563eb]',
+  adjustment:  'shadow-[inset_3px_0_0_#facc15]',
+  stock_count: 'shadow-[inset_3px_0_0_#e879f9]',
+  inspection:  'shadow-[inset_3px_0_0_#78716c]',
+}
+
+/**
+ * Iptal edilen ya da stoktan geri alinan kayit. Satirin kendisi tamamen
+ * notrlesir — zemin de serit de gri. Hareket tipini ve iptal bilgisini
+ * rozetler tasir: TUR rozeti kendi renginde (yesil "Stok Girisi"), durum
+ * rozeti kirmizi "Iptal". Boylece gri satirda sadece iki renk one cikar.
+ */
+const IPTAL_TINT = 'bg-zinc-200/70 hover:bg-zinc-300/70 dark:bg-zinc-100/[0.07] dark:hover:bg-zinc-100/[0.12]'
+const IPTAL_ACCENT = 'shadow-[inset_3px_0_0_#a1a1aa]'
+
+/** Hem iptal durumu hem ters kayit (stoktan geri alinmis) olu sayilir. */
+function olu(kayit: { status?: string | null; reversed_at?: string | null }): boolean {
+  return kayit.status === 'cancelled' || !!kayit.reversed_at
+}
+
+export function recordRowTint(kayit: { type?: string | null; status?: string | null; reversed_at?: string | null }): string {
+  if (olu(kayit)) return IPTAL_TINT
+  return RECORD_ROW_TINT[kayit.type ?? ''] ?? 'hover:bg-zinc-50 dark:hover:bg-zinc-900/40'
+}
+
+export function recordRowAccent(kayit: { type?: string | null; status?: string | null; reversed_at?: string | null }): string | undefined {
+  if (olu(kayit)) return IPTAL_ACCENT
+  return RECORD_ROW_ACCENT[kayit.type ?? '']
+}
+
 export const BUCKET_LABELS: Record<Bucket, string> = {
   available:  'Kullanılabilir',
   quarantine: 'Karantina',

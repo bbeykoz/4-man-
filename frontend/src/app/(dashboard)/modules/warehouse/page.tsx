@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { BrandLoaderBlock } from '@/components/common/BrandLoader'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -26,6 +26,7 @@ import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { QcBadge, QcDetailModal, QualityCheckPrompt, createRecordWithQualityCheck, type QcAnswer } from '@/components/warehouse/QualityCheck'
 import { RecordDetailModal } from '@/components/warehouse/RecordDetailModal'
 import { RecordFilters, bosFiltre, filtreParametreleri, type RecordFilterValues } from '@/components/warehouse/RecordFilters'
+import { RecordSummary } from '@/components/warehouse/RecordSummary'
 import { SignatureCell } from '@/components/warehouse/SignaturePad'
 import { WarehouseFields } from '@/components/warehouse/WarehouseFields'
 import { WarehousesModal } from '@/components/warehouse/WarehousesModal'
@@ -45,7 +46,7 @@ import { WorkstationPanel } from '@/components/warehouse/WorkstationPanel'
 import { AbcXyzPanel } from '@/components/warehouse/AbcXyzPanel'
 import { ReportsPanel } from '@/components/warehouse/ReportsPanel'
 import { WAREHOUSE_TABS, useTabParam } from '@/components/warehouse/tabs'
-import { RECORD_TYPES, apiErrorMessage, useWarehouses, type DepartmentOption } from '@/components/warehouse/stock'
+import { RECORD_TYPES, apiErrorMessage, recordRowAccent, recordRowTint, useWarehouses, type DepartmentOption } from '@/components/warehouse/stock'
 import { DepartmentOptions } from '@/components/warehouse/DepartmentOptions'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -77,14 +78,14 @@ const TABS = WAREHOUSE_TABS
 
 function typeBadge(type: string) {
   const map: Record<string, { label: string; cls: string }> = {
-    stock_in:   { label: 'Stok Girişi', cls: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' },
-    stock_out:  { label: 'Stok Çıkışı', cls: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' },
-    transfer:   { label: 'Transfer',    cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' },
-    adjustment: { label: 'Düzeltme',   cls: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' },
-    inspection: { label: 'Denetim',    cls: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400' },
-    stock_count:{ label: 'Stok Sayımı', cls: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400' },
-    damage:     { label: 'Hasar',      cls: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400' },
-    return_in:  { label: 'İade Girişi', cls: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400' },
+    stock_in:   { label: 'Stok Girişi', cls: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' },
+    stock_out:  { label: 'Stok Çıkışı', cls: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300' },
+    transfer:   { label: 'Transfer',    cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300' },
+    adjustment: { label: 'Düzeltme',   cls: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' },
+    inspection: { label: 'Denetim',    cls: 'bg-stone-200 text-stone-700 dark:bg-stone-700/40 dark:text-stone-300' },
+    stock_count:{ label: 'Stok Sayımı', cls: 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-900/40 dark:text-fuchsia-300' },
+    damage:     { label: 'Hasar',      cls: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' },
+    return_in:  { label: 'İade Girişi', cls: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300' },
   }
   const entry = map[type] ?? { label: type, cls: 'bg-zinc-100 text-zinc-700' }
   return (
@@ -1153,19 +1154,22 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
   const { user, roleLevel } = useAuthStore()
   const deptFilter = roleLevel === ROLE_LEVELS.DEPARTMENT_MANAGER && user?.department_id ? user.department_id : null
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['warehouse-records', tabId, page, search, typeChip, deptFilter, filtre],
+  /** Liste ve Raporlar penceresi ayni suzgecleri kullanir; sadece sayfalama farkli. */
+  const suzgecParams = useMemo(() => {
+    const params: Record<string, any> = {}
+    if (search) params.search = search
+    // Tek tip seçiliyse o tip; "Tümü" ise sekmenin kapsamındaki tipler
+    if (typeChip !== 'all') params.type = typeChip
+    else if (kapsam.length > 0) params.types = kapsam.map(c => c.id).join(',')
+    if (deptFilter) params.department_id = deptFilter
+    return { ...params, ...filtreParametreleri(filtre) }
     // kapsam tabId'den türüyor, ayrı anahtar gerekmez
-    queryFn: () => {
-      const params: Record<string, any> = { page: page + 1, per_page: 15 }
-      if (search) params.search = search
-      // Tek tip seçiliyse o tip; "Tümü" ise sekmenin kapsamındaki tipler
-      if (typeChip !== 'all') params.type = typeChip
-      else if (kapsam.length > 0) params.types = kapsam.map(c => c.id).join(',')
-      if (deptFilter) params.department_id = deptFilter
-      Object.assign(params, filtreParametreleri(filtre))
-      return warehouseService.list(params)
-    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, typeChip, tabId, deptFilter, filtre])
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['warehouse-records', page, suzgecParams],
+    queryFn: () => warehouseService.list({ ...suzgecParams, page: page + 1, per_page: 15 }),
   })
 
   const deleteMutation = useMutation({
@@ -1379,6 +1383,9 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
         </button>
       </div>
 
+      {/* Raporlar: filtrelenmiş kümenin tamamının özeti, listenin üstünde ayrı pencere */}
+      <RecordSummary params={suzgecParams} />
+
       {/* Filtre paneli: alanlar "Ara" ile uygulanır, her tuşta sorgu atılmaz */}
       <RecordFilters onApply={f => { setFiltre(f); setPage(0) }} total={data?.meta?.total} />
 
@@ -1404,6 +1411,8 @@ function WarehouseTabSection({ tabId, departments }: WarehouseTabSectionProps) {
         columns={columns as any}
         data={(data?.data ?? []) as WarehouseRecord[]}
         bordered
+        rowClassName={(r: WarehouseRecord) => recordRowTint(r)}
+        rowAccent={(r: WarehouseRecord) => recordRowAccent(r)}
         total={data?.meta?.total ?? 0}
         pageIndex={page}
         onPaginationChange={s => setPage(s.pageIndex)}
