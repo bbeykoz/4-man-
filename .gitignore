@@ -14,3 +14,8 @@
 .DS_Store
 
 .claude/settings.local.json
+# Makinaya özgü izinler ve ek dizinler; paylaşılacak bir yanı yok
+.claude/settings.json
+
+# Pazarlama videoları: ikili dosya, depoyu şişiriyor (16 MB)
+marketing/
