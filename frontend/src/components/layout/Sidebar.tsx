@@ -19,6 +19,7 @@ import { ROLE_LEVELS, getModuleSlugForPath } from '@/lib/constants'
 import { useT } from '@/lib/i18n'
 import { useQuery } from '@tanstack/react-query'
 import { get } from '@/lib/api'
+import { CompanySwitcher } from '@/components/layout/CompanySwitcher'
 import { SIDEBAR_SUB_TABS } from '@/components/warehouse/tabs'
 import { ACCOUNTING_SIDEBAR_TABS } from '@/components/accounting/tabs'
 
@@ -103,8 +104,16 @@ function getSidebarNav(
   }))
 
   // Pasif departmanlar ayrı grupta; aktifler "Departmanlar" altında kalır
-  nav.push({ title: t('nav.group.departments'), items: departmentItems.filter(i => !isPassive(i.href)) })
-  nav.push({ title: t('nav.group.passiveDepartments'), items: departmentItems.filter(i => isPassive(i.href)) })
+  const departmanGruplari: NavGroup[] = [
+    { title: t('nav.group.departments'), items: departmentItems.filter(i => !isPassive(i.href)) },
+    { title: t('nav.group.passiveDepartments'), items: departmentItems.filter(i => isPassive(i.href)) },
+  ]
+
+  // Platform panelinde departmanlar en altta durur: süper adminin kendi şirketi
+  // yok, bu başlıklar ancak bir şirkete bağlandığında anlam kazanıyor.
+  if (roleLevel !== ROLE_LEVELS.SUPER_ADMIN) {
+    nav.push(...departmanGruplari)
+  }
 
   nav.push({
     title: t('nav.group.other'),
@@ -119,6 +128,10 @@ function getSidebarNav(
       { label: t('nav.settings'),      href: '/settings',      icon: 'Settings' },
     ],
   })
+
+  if (roleLevel === ROLE_LEVELS.SUPER_ADMIN) {
+    nav.push(...departmanGruplari)
+  }
 
   return nav
 }
@@ -163,7 +176,7 @@ export function Sidebar() {
   const pathname    = usePathname()
   const { roleLevel, hasPermission, isCompanyOwner, isPlatformUser, isSuper } = useAuthStore()
   const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useUiStore()
-  const { user, logout, isAuthenticated } = useAuth()
+  const { user, logout, isAuthenticated, impersonation } = useAuth()
   const t = useT()
   // Alt başlıklı öğelerin açık/kapalı durumu; seçilmemişse bulunulan sayfanınki açık gelir
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -318,6 +331,11 @@ export function Sidebar() {
         </button>
       </div>
 
+      {/* Şirket geçişi: yalnız platform tarafında görünür */}
+      {(superAdmin || isPlatformUser() || !!impersonation) && (
+        <CompanySwitcher collapsed={sidebarCollapsed} />
+      )}
+
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-4">
         {renderGroups(false)}
@@ -387,6 +405,10 @@ export function Sidebar() {
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {(superAdmin || isPlatformUser() || !!impersonation) && (
+          <CompanySwitcher onNavigate={() => setMobileSidebarOpen(false)} />
+        )}
 
         {/* Mobile nav */}
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-4">

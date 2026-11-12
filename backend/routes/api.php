@@ -38,6 +38,8 @@ use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\MessageController;
 use App\Http\Controllers\Api\V1\ActivityLogController;
 use App\Http\Controllers\Api\V1\SettingsController;
+use App\Http\Controllers\Api\V1\SuperAdmin\PlatformAnalyticsController;
+use App\Http\Controllers\Api\V1\SuperAdmin\PlatformIncidentController;
 use App\Http\Controllers\Api\V1\SuperAdmin\CompanyAccessController;
 use App\Http\Controllers\Api\V1\SuperAdmin\CompanyController;
 use App\Http\Controllers\Api\V1\SuperAdmin\PlatformRoleController;
@@ -75,7 +77,7 @@ Route::post('public/leads', [PublicLeadController::class, 'store'])->middleware(
 // ──────────────────────────────────────────────────────────────────
 // PROTECTED
 // ──────────────────────────────────────────────────────────────────
-Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function () {
+Route::middleware(['auth:sanctum', 'incident.record', 'company.access', 'log.api'])->group(function () {
 
     // ── Auth / Sessions ─────────────────────────────────────────
     Route::prefix('auth')->group(function () {
@@ -214,6 +216,23 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
         Route::delete('users/{id}',            [GlobalUserController::class, 'destroy'])->middleware('permission:platform.users.manage,system.settings');
 
         Route::get('logs',               [ActivityLogController::class, 'globalIndex'])->middleware('permission:platform.logs.view,system.logs,system.settings');
+
+        // Panel raporları: kendi ekibimiz ve kiracı şirketlerin işlem hacmi.
+        Route::prefix('analytics')->middleware('permission:platform.logs.view,system.logs,system.settings')->group(function () {
+            Route::get('staff',           [PlatformAnalyticsController::class, 'staff']);
+            Route::get('staff/{id}',      [PlatformAnalyticsController::class, 'staffDetail'])->where('id', '[0-9a-fA-F-]{36}');
+            Route::get('companies',       [PlatformAnalyticsController::class, 'companies']);
+        });
+
+        // Kiracı şirketlerde oluşan hatalar. Yalnız platform tarafında okunur;
+        // şirket uçlarında bu kayıtları döndüren bir rota yok.
+        Route::prefix('incidents')->middleware('permission:platform.logs.view,system.logs,system.settings')->group(function () {
+            Route::get('/',       [PlatformIncidentController::class, 'index']);
+            Route::post('/',      [PlatformIncidentController::class, 'store']);
+            Route::get('{id}',    [PlatformIncidentController::class, 'show'])->where('id', '[0-9a-fA-F-]{36}');
+            Route::patch('{id}',  [PlatformIncidentController::class, 'update'])->where('id', '[0-9a-fA-F-]{36}');
+            Route::delete('{id}', [PlatformIncidentController::class, 'destroy'])->where('id', '[0-9a-fA-F-]{36}');
+        });
         Route::post('notifications/broadcast', [NotificationController::class, 'broadcast'])->middleware('permission:platform.notifications.send,system.settings');
 
         // Destek talepleri
@@ -284,6 +303,8 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
 
         // Kalite kontrol: sonradan onay + görsel (depo müdürü ve depo kontrolcüsü)
         $qualityCheckRoutes = function () {
+            // Imza ekraninin personel listesi; iki depo modulunde de ayni.
+            Route::get('signers',                  [WarehouseController::class, 'signers']);
             Route::post('{id}/quality-check',      [WarehouseController::class, 'qualityCheck']);
             Route::get('{id}/quality-check/photo', [WarehouseController::class, 'qualityCheckPhoto']);
             Route::post('{id}/signature',          [WarehouseController::class, 'storeSignature']);
@@ -293,6 +314,7 @@ Route::middleware(['auth:sanctum', 'company.access', 'log.api'])->group(function
         Route::prefix('warehouse')->middleware('module.enabled:warehouse')->group(function () use ($moduleRoutes, $qualityCheckRoutes) {
             $moduleRoutes(WarehouseController::class);
             $qualityCheckRoutes();
+            Route::get('summary',           [WarehouseController::class, 'summary']);
             Route::post('import',           [WarehouseController::class, 'import']);
             Route::get('template/download', [WarehouseController::class, 'downloadTemplate']);
         });
