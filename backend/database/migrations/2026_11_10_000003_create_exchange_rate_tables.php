@@ -66,35 +66,40 @@ return new class extends Migration
         });
 
         // Aynı gün aynı çift için elle kur, resmî kurun üstüne yazılamasın diye
-        // sabit kurlar ayrıca korunuyor.
-        DB::unprepared(<<<'SQL'
-        CREATE OR REPLACE FUNCTION exchange_rates_guard() RETURNS trigger AS $$
-        BEGIN
-            IF (TG_OP = 'UPDATE' AND OLD.is_fixed) THEN
-                IF NEW.rate IS DISTINCT FROM OLD.rate THEN
-                    RAISE EXCEPTION 'Sabit kur değiştirilemez (% / %, %).',
-                        OLD.base_currency, OLD.quote_currency, OLD.rate_date;
+        // sabit kurlar ayrıca korunuyor. plpgsql trigger PostgreSQL'e özeldir;
+        // SQLite'ta no-op geçilir.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::unprepared(<<<'SQL'
+            CREATE OR REPLACE FUNCTION exchange_rates_guard() RETURNS trigger AS $$
+            BEGIN
+                IF (TG_OP = 'UPDATE' AND OLD.is_fixed) THEN
+                    IF NEW.rate IS DISTINCT FROM OLD.rate THEN
+                        RAISE EXCEPTION 'Sabit kur değiştirilemez (% / %, %).',
+                            OLD.base_currency, OLD.quote_currency, OLD.rate_date;
+                    END IF;
                 END IF;
-            END IF;
 
-            IF (TG_OP = 'DELETE' AND OLD.is_fixed) THEN
-                RAISE EXCEPTION 'Sabit kur silinemez (% / %).', OLD.base_currency, OLD.quote_currency;
-            END IF;
+                IF (TG_OP = 'DELETE' AND OLD.is_fixed) THEN
+                    RAISE EXCEPTION 'Sabit kur silinemez (% / %).', OLD.base_currency, OLD.quote_currency;
+                END IF;
 
-            RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
-        END;
-        $$ LANGUAGE plpgsql;
+                RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+            END;
+            $$ LANGUAGE plpgsql;
 
-        CREATE TRIGGER exchange_rates_guard_trg
-            BEFORE UPDATE OR DELETE ON exchange_rates
-            FOR EACH ROW EXECUTE FUNCTION exchange_rates_guard();
-        SQL);
+            CREATE TRIGGER exchange_rates_guard_trg
+                BEFORE UPDATE OR DELETE ON exchange_rates
+                FOR EACH ROW EXECUTE FUNCTION exchange_rates_guard();
+            SQL);
+        }
     }
 
     public function down(): void
     {
-        DB::unprepared('DROP TRIGGER IF EXISTS exchange_rates_guard_trg ON exchange_rates');
-        DB::unprepared('DROP FUNCTION IF EXISTS exchange_rates_guard()');
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::unprepared('DROP TRIGGER IF EXISTS exchange_rates_guard_trg ON exchange_rates');
+            DB::unprepared('DROP FUNCTION IF EXISTS exchange_rates_guard()');
+        }
         Schema::dropIfExists('fx_revaluations');
         Schema::dropIfExists('exchange_rates');
     }

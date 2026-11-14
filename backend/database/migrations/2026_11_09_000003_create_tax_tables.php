@@ -80,15 +80,18 @@ return new class extends Migration
         // Aynı kodun geçerlilik aralıkları çakışamaz. Uygulama kontrolü
         // eşzamanlı iki kayıtta yetersiz kalır; veritabanı son sözü söyler.
         // daterange üst sınırı dışlayıcı: valid_to dahil olsun diye +1 gün.
-        DB::statement('CREATE EXTENSION IF NOT EXISTS btree_gist');
-        DB::statement(<<<'SQL'
-        ALTER TABLE tax_codes ADD CONSTRAINT tax_codes_no_overlap
-        EXCLUDE USING gist (
-            company_id WITH =,
-            code WITH =,
-            daterange(valid_from, COALESCE(valid_to + 1, 'infinity'::date), '[)') WITH &&
-        ) WHERE (deleted_at IS NULL)
-        SQL);
+        // btree_gist/EXCLUDE sözdizimi PostgreSQL'e özeldir; SQLite'ta no-op geçilir.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('CREATE EXTENSION IF NOT EXISTS btree_gist');
+            DB::statement(<<<'SQL'
+            ALTER TABLE tax_codes ADD CONSTRAINT tax_codes_no_overlap
+            EXCLUDE USING gist (
+                company_id WITH =,
+                code WITH =,
+                daterange(valid_from, COALESCE(valid_to + 1, 'infinity'::date), '[)') WITH &&
+            ) WHERE (deleted_at IS NULL)
+            SQL);
+        }
 
         // Fiş satırındaki vergi kodu artık gerçek bir tabloya işaret ediyor.
         Schema::table('journal_lines', function (Blueprint $table) {

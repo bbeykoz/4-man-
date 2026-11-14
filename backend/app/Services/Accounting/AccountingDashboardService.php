@@ -415,7 +415,7 @@ class AccountingDashboardService
             ->havingRaw("SUM($yon) <> 0")
             ->orderByRaw("SUM($yon) DESC")
             ->limit($limit)
-            ->get(['a.code', 'a.name', DB::raw("ROUND(SUM($yon)::numeric, 2) AS tutar")])
+            ->get(['a.code', 'a.name', DB::raw("ROUND(SUM($yon), 2) AS tutar")])
             ->map(fn ($s) => ['code' => $s->code, 'name' => $s->name, 'amount' => (float) $s->tutar])
             ->all();
     }

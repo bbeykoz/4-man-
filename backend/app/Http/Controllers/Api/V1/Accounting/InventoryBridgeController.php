@@ -10,6 +10,7 @@ use App\Models\Modules\WarehouseRecord;
 use App\Services\Accounting\InventoryPostingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -27,8 +28,13 @@ class InventoryBridgeController extends Controller
     {
         $companyId = $request->user()->company_id;
 
+        // payload->>'total_value'::numeric PostgreSQL'e özeldir; SQLite'ta json_extract+CAST eşdeğeri kullanılır.
+        $degerIfade = DB::connection()->getDriverName() === 'pgsql'
+            ? "COALESCE(SUM((payload->>'total_value')::numeric), 0) AS deger"
+            : "COALESCE(SUM(CAST(json_extract(payload, '$.total_value') AS REAL)), 0) AS deger";
+
         $sayilar = InventoryAccountingEvent::where('company_id', $companyId)
-            ->selectRaw('status, COUNT(*) AS adet, COALESCE(SUM((payload->>\'total_value\')::numeric), 0) AS deger')
+            ->selectRaw("status, COUNT(*) AS adet, $degerIfade")
             ->groupBy('status')
             ->get()
             ->mapWithKeys(fn ($s) => [$s->status => [

@@ -85,40 +85,45 @@ return new class extends Migration
             $table->index('document_id');
         });
 
-        // Gönderilmiş beyan değiştirilemez.
-        DB::unprepared(<<<'SQL'
-        CREATE OR REPLACE FUNCTION vat_returns_guard() RETURNS trigger AS $$
-        BEGIN
-            IF (TG_OP = 'DELETE') THEN
+        // Gönderilmiş beyan değiştirilemez. plpgsql trigger PostgreSQL'e özeldir;
+        // SQLite'ta no-op geçilir.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::unprepared(<<<'SQL'
+            CREATE OR REPLACE FUNCTION vat_returns_guard() RETURNS trigger AS $$
+            BEGIN
+                IF (TG_OP = 'DELETE') THEN
+                    IF OLD.status IN ('submitted', 'accepted') THEN
+                        RAISE EXCEPTION 'Gönderilmiş KDV beyanı silinemez (%).', OLD.period_key;
+                    END IF;
+                    RETURN OLD;
+                END IF;
+
                 IF OLD.status IN ('submitted', 'accepted') THEN
-                    RAISE EXCEPTION 'Gönderilmiş KDV beyanı silinemez (%).', OLD.period_key;
+                    IF NEW.boxes       IS DISTINCT FROM OLD.boxes
+                    OR NEW.output_tax  IS DISTINCT FROM OLD.output_tax
+                    OR NEW.input_tax   IS DISTINCT FROM OLD.input_tax
+                    OR NEW.net_payable IS DISTINCT FROM OLD.net_payable THEN
+                        RAISE EXCEPTION 'Gönderilmiş KDV beyanının tutarları değiştirilemez (%). Düzeltme beyanı verin.', OLD.period_key;
+                    END IF;
                 END IF;
-                RETURN OLD;
-            END IF;
 
-            IF OLD.status IN ('submitted', 'accepted') THEN
-                IF NEW.boxes       IS DISTINCT FROM OLD.boxes
-                OR NEW.output_tax  IS DISTINCT FROM OLD.output_tax
-                OR NEW.input_tax   IS DISTINCT FROM OLD.input_tax
-                OR NEW.net_payable IS DISTINCT FROM OLD.net_payable THEN
-                    RAISE EXCEPTION 'Gönderilmiş KDV beyanının tutarları değiştirilemez (%). Düzeltme beyanı verin.', OLD.period_key;
-                END IF;
-            END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
 
-            RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql;
-
-        CREATE TRIGGER vat_returns_guard_trg
-            BEFORE UPDATE OR DELETE ON vat_returns
-            FOR EACH ROW EXECUTE FUNCTION vat_returns_guard();
-        SQL);
+            CREATE TRIGGER vat_returns_guard_trg
+                BEFORE UPDATE OR DELETE ON vat_returns
+                FOR EACH ROW EXECUTE FUNCTION vat_returns_guard();
+            SQL);
+        }
     }
 
     public function down(): void
     {
-        DB::unprepared('DROP TRIGGER IF EXISTS vat_returns_guard_trg ON vat_returns');
-        DB::unprepared('DROP FUNCTION IF EXISTS vat_returns_guard()');
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::unprepared('DROP TRIGGER IF EXISTS vat_returns_guard_trg ON vat_returns');
+            DB::unprepared('DROP FUNCTION IF EXISTS vat_returns_guard()');
+        }
         Schema::dropIfExists('vat_return_entries');
         Schema::dropIfExists('vat_returns');
     }

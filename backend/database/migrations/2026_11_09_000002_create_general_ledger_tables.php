@@ -165,9 +165,13 @@ return new class extends Migration
         });
 
         // Tutar işaretleri ve "tek yön" kuralı veritabanında da zorlanıyor.
-        DB::statement("ALTER TABLE journal_lines ADD CONSTRAINT journal_lines_amounts_non_negative CHECK (debit >= 0 AND credit >= 0)");
-        DB::statement("ALTER TABLE journal_lines ADD CONSTRAINT journal_lines_single_side CHECK (NOT (debit > 0 AND credit > 0))");
-        DB::statement("ALTER TABLE journal_lines ADD CONSTRAINT journal_lines_not_empty CHECK (debit > 0 OR credit > 0)");
+        // CHECK ... ADD CONSTRAINT sözdizimi ve aşağıdaki trigger/fonksiyonlar PostgreSQL'e özeldir;
+        // yerel SQLite geliştirme ortamında no-op geçilir, üretimde (pgsql) aynen çalışır.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement("ALTER TABLE journal_lines ADD CONSTRAINT journal_lines_amounts_non_negative CHECK (debit >= 0 AND credit >= 0)");
+            DB::statement("ALTER TABLE journal_lines ADD CONSTRAINT journal_lines_single_side CHECK (NOT (debit > 0 AND credit > 0))");
+            DB::statement("ALTER TABLE journal_lines ADD CONSTRAINT journal_lines_not_empty CHECK (debit > 0 OR credit > 0)");
+        }
 
         // ─── Muhasebe denetim kaydı ──────────────────────────────────
         Schema::create('accounting_audit_events', function (Blueprint $table) {
@@ -205,14 +209,17 @@ return new class extends Migration
             $table->unique(['company_id', 'key', 'year']);
         });
 
-        $this->protectPostedEntries();
-        $this->protectAuditLog();
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            $this->protectPostedEntries();
+            $this->protectAuditLog();
+        }
     }
 
     /**
      * Posted ve reversed fişler veritabanı seviyesinde korunuyor.
      * Uygulama katmanı atlanırsa (konsol, elle SQL) defter yine bozulmasın.
      * İzin verilen tek güncelleme: ters kayıt bağlantısının yazılması.
+     * Sadece PostgreSQL'de çalışır (plpgsql trigger fonksiyonu).
      */
     private function protectPostedEntries(): void
     {
@@ -296,12 +303,14 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::unprepared('DROP TRIGGER IF EXISTS accounting_audit_append_only_trg ON accounting_audit_events');
-        DB::unprepared('DROP TRIGGER IF EXISTS journal_lines_guard_trg ON journal_lines');
-        DB::unprepared('DROP TRIGGER IF EXISTS journal_entries_guard_trg ON journal_entries');
-        DB::unprepared('DROP FUNCTION IF EXISTS accounting_audit_append_only()');
-        DB::unprepared('DROP FUNCTION IF EXISTS journal_lines_guard()');
-        DB::unprepared('DROP FUNCTION IF EXISTS journal_entries_guard()');
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::unprepared('DROP TRIGGER IF EXISTS accounting_audit_append_only_trg ON accounting_audit_events');
+            DB::unprepared('DROP TRIGGER IF EXISTS journal_lines_guard_trg ON journal_lines');
+            DB::unprepared('DROP TRIGGER IF EXISTS journal_entries_guard_trg ON journal_entries');
+            DB::unprepared('DROP FUNCTION IF EXISTS accounting_audit_append_only()');
+            DB::unprepared('DROP FUNCTION IF EXISTS journal_lines_guard()');
+            DB::unprepared('DROP FUNCTION IF EXISTS journal_entries_guard()');
+        }
 
         Schema::dropIfExists('accounting_sequences');
         Schema::dropIfExists('accounting_audit_events');

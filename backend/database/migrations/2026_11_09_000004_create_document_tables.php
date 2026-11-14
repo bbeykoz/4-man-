@@ -166,37 +166,40 @@ return new class extends Migration
             $table->index(['company_id', 'product_id']);
         });
 
-        DB::statement('ALTER TABLE document_lines ADD CONSTRAINT document_lines_quantity_not_zero CHECK (quantity <> 0)');
+        // CHECK/trigger sözdizimi PostgreSQL'e özeldir; SQLite'ta no-op geçilir.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE document_lines ADD CONSTRAINT document_lines_quantity_not_zero CHECK (quantity <> 0)');
 
-        // Deftere işlenmiş belge silinemez, tutarı değişemez.
-        DB::unprepared(<<<'SQL'
-        CREATE OR REPLACE FUNCTION documents_guard() RETURNS trigger AS $$
-        BEGIN
-            IF (TG_OP = 'DELETE') THEN
+            // Deftere işlenmiş belge silinemez, tutarı değişemez.
+            DB::unprepared(<<<'SQL'
+            CREATE OR REPLACE FUNCTION documents_guard() RETURNS trigger AS $$
+            BEGIN
+                IF (TG_OP = 'DELETE') THEN
+                    IF OLD.status IN ('posted', 'partially_settled', 'settled') THEN
+                        RAISE EXCEPTION 'Deftere işlenmiş belge silinemez (%). İptal ya da iade belgesi düzenleyin.', OLD.number;
+                    END IF;
+                    RETURN OLD;
+                END IF;
+
                 IF OLD.status IN ('posted', 'partially_settled', 'settled') THEN
-                    RAISE EXCEPTION 'Deftere işlenmiş belge silinemez (%). İptal ya da iade belgesi düzenleyin.', OLD.number;
+                    IF NEW.net_amount   IS DISTINCT FROM OLD.net_amount
+                    OR NEW.tax_amount   IS DISTINCT FROM OLD.tax_amount
+                    OR NEW.gross_amount IS DISTINCT FROM OLD.gross_amount
+                    OR NEW.number       IS DISTINCT FROM OLD.number
+                    OR NEW.issue_date   IS DISTINCT FROM OLD.issue_date THEN
+                        RAISE EXCEPTION 'Deftere işlenmiş belgenin tutar, numara ve tarih alanları değiştirilemez (%).', OLD.number;
+                    END IF;
                 END IF;
-                RETURN OLD;
-            END IF;
 
-            IF OLD.status IN ('posted', 'partially_settled', 'settled') THEN
-                IF NEW.net_amount   IS DISTINCT FROM OLD.net_amount
-                OR NEW.tax_amount   IS DISTINCT FROM OLD.tax_amount
-                OR NEW.gross_amount IS DISTINCT FROM OLD.gross_amount
-                OR NEW.number       IS DISTINCT FROM OLD.number
-                OR NEW.issue_date   IS DISTINCT FROM OLD.issue_date THEN
-                    RAISE EXCEPTION 'Deftere işlenmiş belgenin tutar, numara ve tarih alanları değiştirilemez (%).', OLD.number;
-                END IF;
-            END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
 
-            RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql;
-
-        CREATE TRIGGER documents_guard_trg
-            BEFORE UPDATE OR DELETE ON documents
-            FOR EACH ROW EXECUTE FUNCTION documents_guard();
-        SQL);
+            CREATE TRIGGER documents_guard_trg
+                BEFORE UPDATE OR DELETE ON documents
+                FOR EACH ROW EXECUTE FUNCTION documents_guard();
+            SQL);
+        }
 
         // Fiş tarafından belgeye geri bağ.
         Schema::table('journal_entries', function (Blueprint $table) {
@@ -212,8 +215,10 @@ return new class extends Migration
             $table->dropColumn('document_id');
         });
 
-        DB::unprepared('DROP TRIGGER IF EXISTS documents_guard_trg ON documents');
-        DB::unprepared('DROP FUNCTION IF EXISTS documents_guard()');
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::unprepared('DROP TRIGGER IF EXISTS documents_guard_trg ON documents');
+            DB::unprepared('DROP FUNCTION IF EXISTS documents_guard()');
+        }
 
         Schema::dropIfExists('document_lines');
         Schema::dropIfExists('documents');

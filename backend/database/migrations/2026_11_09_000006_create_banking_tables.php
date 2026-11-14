@@ -183,39 +183,44 @@ return new class extends Migration
         });
 
         // Deftere işlenmiş ödeme silinemez, tutarı değişemez.
-        DB::unprepared(<<<'SQL'
-        CREATE OR REPLACE FUNCTION payments_guard() RETURNS trigger AS $$
-        BEGIN
-            IF (TG_OP = 'DELETE') THEN
-                IF OLD.status = 'posted' THEN
-                    RAISE EXCEPTION 'Deftere işlenmiş ödeme silinemez (%). Ters kayıt kullanın.', COALESCE(OLD.number, OLD.id::text);
+        // plpgsql trigger PostgreSQL'e özeldir; SQLite'ta no-op geçilir.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::unprepared(<<<'SQL'
+            CREATE OR REPLACE FUNCTION payments_guard() RETURNS trigger AS $$
+            BEGIN
+                IF (TG_OP = 'DELETE') THEN
+                    IF OLD.status = 'posted' THEN
+                        RAISE EXCEPTION 'Deftere işlenmiş ödeme silinemez (%). Ters kayıt kullanın.', COALESCE(OLD.number, OLD.id::text);
+                    END IF;
+                    RETURN OLD;
                 END IF;
-                RETURN OLD;
-            END IF;
 
-            IF OLD.status = 'posted' AND NEW.status = 'posted' THEN
-                IF NEW.amount       IS DISTINCT FROM OLD.amount
-                OR NEW.payment_date IS DISTINCT FROM OLD.payment_date
-                OR NEW.number       IS DISTINCT FROM OLD.number
-                OR NEW.bank_account_id IS DISTINCT FROM OLD.bank_account_id THEN
-                    RAISE EXCEPTION 'Deftere işlenmiş ödemenin tutar, tarih, numara ve hesap alanları değiştirilemez (%).', OLD.number;
+                IF OLD.status = 'posted' AND NEW.status = 'posted' THEN
+                    IF NEW.amount       IS DISTINCT FROM OLD.amount
+                    OR NEW.payment_date IS DISTINCT FROM OLD.payment_date
+                    OR NEW.number       IS DISTINCT FROM OLD.number
+                    OR NEW.bank_account_id IS DISTINCT FROM OLD.bank_account_id THEN
+                        RAISE EXCEPTION 'Deftere işlenmiş ödemenin tutar, tarih, numara ve hesap alanları değiştirilemez (%).', OLD.number;
+                    END IF;
                 END IF;
-            END IF;
 
-            RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
 
-        CREATE TRIGGER payments_guard_trg
-            BEFORE UPDATE OR DELETE ON payments
-            FOR EACH ROW EXECUTE FUNCTION payments_guard();
-        SQL);
+            CREATE TRIGGER payments_guard_trg
+                BEFORE UPDATE OR DELETE ON payments
+                FOR EACH ROW EXECUTE FUNCTION payments_guard();
+            SQL);
+        }
     }
 
     public function down(): void
     {
-        DB::unprepared('DROP TRIGGER IF EXISTS payments_guard_trg ON payments');
-        DB::unprepared('DROP FUNCTION IF EXISTS payments_guard()');
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::unprepared('DROP TRIGGER IF EXISTS payments_guard_trg ON payments');
+            DB::unprepared('DROP FUNCTION IF EXISTS payments_guard()');
+        }
 
         Schema::dropIfExists('cash_counts');
         Schema::dropIfExists('bank_transactions');
